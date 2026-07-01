@@ -486,7 +486,7 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ message: userText, deviceId: 设备ID })
+                    body: JSON.stringify({ messages: [{ role: 'user', content: userText }], deviceId: 设备ID })
                 });
 
                 const data = await response.json();

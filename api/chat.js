@@ -10,13 +10,25 @@ async function callDeepSeek({ model, max_tokens, temperature, system, messages }
     throw err;
   }
 
-  // DeepSeek 使用 OpenAI 兼容格式
-  const body = { model, max_tokens, temperature, messages };
-  
-  // 如果有 system message，添加到消息列表开头
-  if (system) {
-    body.messages = [{ role: 'system', content: system }, ...messages];
+  // 确保 messages 是有效数组且不为空
+  if (!Array.isArray(messages) || messages.length === 0) {
+    const err = new Error('messages 数组为空或格式无效');
+    err.status = 400;
+    throw err;
   }
+
+  // DeepSeek 使用 OpenAI 兼容格式
+  const body = { model, max_tokens, temperature, messages: [] };
+  
+  // 如果有 system message，先添加
+  if (system && system.trim()) {
+    body.messages.push({ role: 'system', content: system });
+  }
+  
+  // 添加所有用户/助手消息
+  body.messages.push(...messages);
+
+  console.log('[DeepSeek Request]', JSON.stringify({ model, messageCount: body.messages.length }));
 
   const resp = await fetch(`${BASE_URL}/chat/completions`, {
     method: 'POST',
@@ -63,8 +75,11 @@ export default async function handler(req, res) {
     temperature = 0.7
   } = req.body || {};
 
+  console.log('[Request Received]', { messageCount: messages.length, hasSystem: !!system });
+
   if (!Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: 'messages 不能为空' });
+    console.error('[Validation Failed] messages is empty or not an array');
+    return res.status(400).json({ error: 'messages 不能为空', received: messages });
   }
 
   try {
@@ -101,9 +116,9 @@ export default async function handler(req, res) {
 
     res.status(200).json({
       reply,
-      model: resp.model,
-      stop_reason: resp.choices?.[0]?.finish_reason,
-      usage: resp.usage
+      model: resp.model || model,
+      stop_reason: resp.choices?.[0]?.finish_reason || 'stop',
+      usage: resp.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
     });
   } catch (err) {
     console.error('[DeepSeek Error]', err);
