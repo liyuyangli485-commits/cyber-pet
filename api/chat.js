@@ -1,7 +1,11 @@
 const DEFAULT_MODEL = 'deepseek-chat';
 const BASE_URL = 'https://api.deepseek.com/v1';
 
-// 构造发往 DeepSeek 官方 API 的请求（OpenAI 兼容格式）
+// Fish Audio TTS 配置
+const FISH_AUDIO_URL = 'https://api.fish.audio/v1/tts';
+const DEFAULT_VOICE_ID = '7f92f8afb8ec43bf81429cc1c915acbe'; // 神里綾華
+
+// 构造发往 DeepSeek 官方 API 的请求
 async function callDeepSeek({ model, max_tokens, temperature, system, messages }) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey || apiKey.includes('在这里')) {
@@ -10,22 +14,18 @@ async function callDeepSeek({ model, max_tokens, temperature, system, messages }
     throw err;
   }
 
-  // 确保 messages 是有效数组且不为空
   if (!Array.isArray(messages) || messages.length === 0) {
     const err = new Error('messages 数组为空或格式无效');
     err.status = 400;
     throw err;
   }
 
-  // DeepSeek 使用 OpenAI 兼容格式
   const body = { model, max_tokens, temperature, messages: [] };
   
-  // 如果有 system message，先添加
   if (system && system.trim()) {
     body.messages.push({ role: 'system', content: system });
   }
   
-  // 添加所有用户/助手消息
   body.messages.push(...messages);
 
   console.log('[DeepSeek Request]', JSON.stringify({ model, messageCount: body.messages.length }));
@@ -62,6 +62,54 @@ async function callDeepSeek({ model, max_tokens, temperature, system, messages }
   return data;
 }
 
+// Fish Audio TTS 语音合成
+async function callFishAudioTTS(text, voiceId) {
+  const apiKey = process.env.FISH_AUDIO_API_KEY;
+  if (!apiKey) {
+    console.warn('[Fish Audio] FISH_AUDIO_API_KEY 未設置，跳過 TTS');
+    return null;
+  }
+
+  try {
+    console.log('[Fish Audio] 開始 TTS 合成', { textLength: text.length, voiceId });
+
+    const resp = await fetch(FISH_AUDIO_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text: text,
+        reference_id: voiceId || DEFAULT_VOICE_ID,
+        format: 'wav',
+        mp3_bitrate: 128,
+        normalize: true,
+        latency: 'normal'
+      })
+    });
+
+    if (!resp.ok) {
+      const errorText = await resp.text();
+      console.error('[Fish Audio] TTS 失敗:', resp.status, errorText);
+      return null;
+    }
+
+    // 獲取音頻 ArrayBuffer
+    const audioBuffer = await resp.arrayBuffer();
+    const base64 = Buffer.from(audioBuffer).toString('base64');
+    
+    console.log('[Fish Audio] TTS 成功', { audioSize: base64.length });
+    return {
+      audio: base64,
+      audioFormat: 'audio/wav'
+    };
+  } catch (err) {
+    console.error('[Fish Audio] TTS 異常:', err);
+    return null;
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -72,10 +120,11 @@ export default async function handler(req, res) {
     system = '',
     model = DEFAULT_MODEL,
     max_tokens = 1024,
-    temperature = 0.7
+    temperature = 0.7,
+    voiceId
   } = req.body || {};
 
-  console.log('[Request Received]', { messageCount: messages.length, hasSystem: !!system });
+  console.log('[Request Received]', { messageCount: messages.length, hasSystem: !!system, voiceId });
 
   if (!Array.isArray(messages) || messages.length === 0) {
     console.error('[Validation Failed] messages is empty or not an array');
@@ -83,6 +132,7 @@ export default async function handler(req, res) {
   }
 
   try {
+    // 1. 調用 DeepSeek 獲取文字回應
     const resp = await callDeepSeek({
       model,
       max_tokens,
@@ -91,7 +141,6 @@ export default async function handler(req, res) {
       messages
     });
 
-    // DeepSeek/OpenAI 格式：choices[0].message.content
     let reply = resp.choices?.[0]?.message?.content || '';
     reply = reply.trim();
 
@@ -114,11 +163,19 @@ export default async function handler(req, res) {
     }
     reply = reply.trimEnd();
 
+    // 2. 調用 Fish Audio TTS 生成語音
+    const ttsResult = await callFishAudioTTS(reply, voiceId);
+
+    // 3. 返回文字 + 音頻
     res.status(200).json({
       reply,
       model: resp.model || model,
       stop_reason: resp.choices?.[0]?.finish_reason || 'stop',
-      usage: resp.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+      usage: resp.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+      ...(ttsResult && {
+        audio: ttsResult.audio,
+        audioFormat: ttsResult.audioFormat
+      })
     });
   } catch (err) {
     console.error('[DeepSeek Error]', err);
