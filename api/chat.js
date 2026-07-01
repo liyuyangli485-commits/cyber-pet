@@ -1,9 +1,8 @@
 const DEFAULT_MODEL = 'deepseek-chat';
 const BASE_URL = 'https://api.deepseek.com/v1';
 
-// Fish Audio TTS 配置
-const FISH_AUDIO_URL = 'https://api.fish.audio/v1/tts';
-const DEFAULT_VOICE_ID = '7f92f8afb8ec43bf81429cc1c915acbe'; // 神里綾華
+// Edge TTS 配置
+const DEFAULT_VOICE = 'zh-CN-XiaoxiaoNeural'; // 曉曉 - 高質量中文女聲
 
 // 构造发往 DeepSeek 官方 API 的请求
 async function callDeepSeek({ model, max_tokens, temperature, system, messages }) {
@@ -21,11 +20,11 @@ async function callDeepSeek({ model, max_tokens, temperature, system, messages }
   }
 
   const body = { model, max_tokens, temperature, messages: [] };
-  
+
   if (system && system.trim()) {
     body.messages.push({ role: 'system', content: system });
   }
-  
+
   body.messages.push(...messages);
 
   console.log('[DeepSeek Request]', JSON.stringify({ model, messageCount: body.messages.length }));
@@ -62,51 +61,28 @@ async function callDeepSeek({ model, max_tokens, temperature, system, messages }
   return data;
 }
 
-// Fish Audio TTS 语音合成
-async function callFishAudioTTS(text, voiceId) {
-  const apiKey = process.env.FISH_AUDIO_API_KEY;
-  if (!apiKey) {
-    console.warn('[Fish Audio] FISH_AUDIO_API_KEY 未設置，跳過 TTS');
-    return null;
-  }
-
+// Edge TTS 语音合成（完全免费，无需 API Key）
+async function callEdgeTTS(text, voice) {
   try {
-    console.log('[Fish Audio] 開始 TTS 合成', { textLength: text.length, voiceId });
+    console.log('[Edge TTS] 開始 TTS 合成', { textLength: text.length, voice });
 
-    const resp = await fetch(FISH_AUDIO_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        text: text,
-        reference_id: voiceId || DEFAULT_VOICE_ID,
-        format: 'wav',
-        mp3_bitrate: 128,
-        normalize: true,
-        latency: 'normal',
-        model: 's2.1-pro-free'
-      })
-    });
+    // 動態導入 edge-tts（避免 Vercel 構建時問題）
+    const { EdgeTTS } = await import('edge-tts');
+    const tts = new EdgeTTS();
 
-    if (!resp.ok) {
-      const errorText = await resp.text();
-      console.error('[Fish Audio] TTS 失敗:', resp.status, errorText);
-      return null;
-    }
+    // 生成音頻（返回 ArrayBuffer）
+    const audioBuffer = await tts.tts(text, voice || DEFAULT_VOICE);
 
-    // 獲取音頻 ArrayBuffer
-    const audioBuffer = await resp.arrayBuffer();
+    // 轉換為 base64
     const base64 = Buffer.from(audioBuffer).toString('base64');
-    
-    console.log('[Fish Audio] TTS 成功', { audioSize: base64.length });
+
+    console.log('[Edge TTS] TTS 成功', { audioSize: base64.length });
     return {
       audio: base64,
-      audioFormat: 'audio/wav'
+      audioFormat: 'audio/mpeg' // Edge TTS 返回 MP3 格式
     };
   } catch (err) {
-    console.error('[Fish Audio] TTS 異常:', err);
+    console.error('[Edge TTS] TTS 異常:', err);
     return null;
   }
 }
@@ -122,10 +98,10 @@ export default async function handler(req, res) {
     model = DEFAULT_MODEL,
     max_tokens = 1024,
     temperature = 0.7,
-    voiceId
+    voice
   } = req.body || {};
 
-  console.log('[Request Received]', { messageCount: messages.length, hasSystem: !!system, voiceId });
+  console.log('[Request Received]', { messageCount: messages.length, hasSystem: !!system, voice });
 
   if (!Array.isArray(messages) || messages.length === 0) {
     console.error('[Validation Failed] messages is empty or not an array');
@@ -164,8 +140,8 @@ export default async function handler(req, res) {
     }
     reply = reply.trimEnd();
 
-    // 2. 調用 Fish Audio TTS 生成語音
-    const ttsResult = await callFishAudioTTS(reply, voiceId);
+    // 2. 調用 Edge TTS 生成語音（完全免費）
+    const ttsResult = await callEdgeTTS(reply, voice);
 
     // 3. 返回文字 + 音頻
     res.status(200).json({
