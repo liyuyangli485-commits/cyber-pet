@@ -39,7 +39,9 @@ async function callAICodeMirror({ model, max_tokens, temperature, system, messag
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01'
+      'anthropic-version': '2023-06-01',
+      'ANTHROPIC_AUTH_TOKEN': apiKey,
+      'ANTHROPIC_API_KEY': apiKey
     },
     body: JSON.stringify(body)
   });
