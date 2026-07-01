@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nova · AI 聊天</title>
+<style>
+  :root {
+    --bg-1: #0a0e1a;
+    --bg-2: #111827;
+    --surface: rgba(255, 255, 255, 0.04);
+    --surface-strong: rgba(255, 255, 255, 0.08);
+    --border: rgba(255, 255, 255, 0.08);
+    --text: #e8ecf4;
+    --text-dim: #8a93a6;
+    --accent-user: linear-gradient(135deg, #4f8cff 0%, #7c3aed 100%);
+    --accent-ai: linear-gradient(135deg, #1a2236 0%, #232b42 100%);
+    --bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; overflow: hidden; }
+  body {
+    background:
+      radial-gradient(1000px 600px at 15% -10%, rgba(124, 58, 237, 0.25), transparent 60%),
+      radial-gradient(900px 500px at 110% 20%, rgba(56, 189, 248, 0.2), transparent 60%),
+      linear-gradient(180deg, var(--bg-1), var(--bg-2));
+    display: grid; place-items: center; padding: 24px;
+  }
+  body::before {
+    content: ""; position: fixed; inset: -20%;
+    background:
+      radial-gradient(600px 300px at 30% 80%, rgba(79, 140, 255, 0.12), transparent 70%),
+      radial-gradient(500px 280px at 80% 60%, rgba(236, 72, 153, 0.1), transparent 70%);
+    filter: blur(40px); animation: drift 18s ease-in-out infinite alternate; pointer-events: none; z-index: 0;
+  }
+  @keyframes drift { from { transform: translate3d(-2%, -2%, 0) scale(1); } to { transform: translate3d(3%, 4%, 0) scale(1.05); } }
+  .chat-shell {
+    position: relative; z-index: 1;
+    width: min(880px, 100%); height: min(880px, 100%);
+    background: linear-gradient(180deg, rgba(20, 26, 42, 0.85), rgba(13, 17, 30, 0.85));
+    border: 1px solid var(--border); border-radius: 24px;
+    backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06);
+    display: grid; grid-template-rows: auto 1fr auto; overflow: hidden;
+  }
+  .top-bar { display: flex; align-items: center; gap: 14px; padding: 18px 24px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg, rgba(255,255,255,0.03), transparent); }
+  .avatar { width: 42px; height: 42px; border-radius: 12px; background: var(--accent-user); display: grid; place-items: center; font-weight: 800; font-size: 18px; box-shadow: 0 6px 20px rgba(108,140,255,0.45); position: relative; }
+  .avatar::after { content: ""; position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border-radius: 50%; background: #22c55e; border: 2px solid #0d111e; box-shadow: 0 0 10px #22c55e; }
+  .title-block .name { font-size: 17px; font-weight: 700; }
+  .title-block .status { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .top-actions { margin-left: auto; display: flex; gap: 8px; }
+  .icon-btn { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); cursor: pointer; transition: all 0.2s ease; display: grid; place-items: center; }
+  .icon-btn:hover { color: var(--text); background: var(--surface-strong); transform: translateY(-1px); }
+  .messages { padding: 28px 28px 12px; overflow-y: auto; scroll-behavior: smooth; display: flex; flex-direction: column; gap: 18px; }
+  .messages::-webkit-scrollbar { width: 8px; }
+  .messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+  .row { display: flex; align-items: flex-end; gap: 12px; max-width: 100%; }
+  .row.user { justify-content: flex-end; }
+  .row .mini-avatar { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+  .row.ai .mini-avatar { background: var(--accent-user); color: #fff; box-shadow: 0 4px 14px rgba(108,140,255,0.4); }
+  .row.user .mini-avatar { background: linear-gradient(135deg, #2a3247, #1a2030); border: 1px solid var(--border); color: var(--text-dim); }
+  .bubble-wrap { display: flex; flex-direction: column; max-width: 72%; }
+  .row.user .bubble-wrap { align-items: flex-end; }
+  .label { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim); margin: 0 6px 6px; }
+  .row.ai .label { color: #8ba4ff; }
+  .row.user .label { color: #c4a8ff; }
+  .bubble { padding: 16px 20px; border-radius: 18px; font-size: 17px; line-height: 1.6; letter-spacing: 0.2px; word-wrap: break-word; white-space: pre-wrap; position: relative; will-change: transform, filter, opacity; }
+  .row.ai .bubble { background: var(--accent-ai); border: 1px solid var(--border); border-bottom-left-radius: 6px; color: var(--text); }
+  .row.user .bubble { background: var(--accent-user); border-bottom-right-radius: 6px; color: #fff; box-shadow: 0 8px 30px rgba(79,140,255,0.3); }
+  .bubble.error { background: linear-gradient(135deg, #3a1f24, #2a1418) !important; border-color: rgba(239,68,68,0.4) !important; color: #fecaca !important; }
+  @keyframes bubbleInRight { 0% { opacity: 0; transform: translate3d(40px,14px,0) scale(0.85); filter: blur(10px); } 55% { opacity: 1; transform: translate3d(-6px,-2px,0) scale(1.03); filter: blur(2px); } 80% { transform: translate3d(2px,0,0) scale(0.99); filter: blur(0); } 100% { opacity: 1; transform: translate3d(0,0,0) scale(1); filter: blur(0); } }
+  @keyframes bubbleInLeft { 0% { opacity: 0; transform: translate3d(-40px,14px,0) scale(0.85); filter: blur(10px); } 55% { opacity: 1; transform: translate3d(6px,-2px,0) scale(1.03); filter: blur(2px); } 80% { transform: translate3d(-2px,0,0) scale(0.99); filter: blur(0); } 100% { opacity: 1; transform: translate3d(0,0,0) scale(1); filter: blur(0); } }
+  @keyframes rowFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .row { animation: rowFadeIn 0.35s ease both; }
+  .row.user .bubble { animation: bubbleInRight 0.7s var(--bounce) both; }
+  .row.ai .bubble { animation: bubbleInLeft 0.7s var(--bounce) both; }
+  .typing { display: inline-flex; gap: 6px; align-items: center; padding: 4px 0; }
+  .typing span { width: 8px; height: 8px; border-radius: 50%; background: #8ba4ff; animation: blink 1.2s infinite ease-in-out both; }
+  .typing span:nth-child(2) { animation-delay: 0.18s; }
+  .typing span:nth-child(3) { animation-delay: 0.36s; }
+  @keyframes blink { 0%,80%,100% { transform: scale(0.7); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
+  .composer { padding: 16px 20px 20px; border-top: 1px solid var(--border); background: linear-gradient(0deg, rgba(255,255,255,0.03), transparent); }
+  .input-wrap { display: flex; align-items: flex-end; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 10px 10px 10px 16px; transition: border-color 0.25s ease, box-shadow 0.25s ease; }
+  .input-wrap:focus-within { border-color: rgba(108,140,255,0.6); box-shadow: 0 0 0 4px rgba(108,140,255,0.12); }
+  textarea { flex: 1; resize: none; border: none; outline: none; background: transparent; color: var(--text); font-size: 16px; line-height: 1.5; font-family: inherit; max-height: 140px; padding: 8px 0; }
+  textarea::placeholder { color: var(--text-dim); }
+  .send-btn { width: 44px; height: 44px; border-radius: 12px; border: none; cursor: pointer; background: var(--accent-user); color: white; display: grid; place-items: center; box-shadow: 0 8px 24px rgba(108,140,255,0.45); transition: transform 0.2s var(--bounce), box-shadow 0.2s ease, opacity 0.2s ease; }
+  .send-btn:hover { transform: translateY(-2px) scale(1.04); }
+  .send-btn:active { transform: translateY(0) scale(0.96); }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+  .hint { font-size: 11px; color: var(--text-dim); margin-top: 8px; padding: 0 6px; }
+  @media (max-width: 600px) { body { padding: 0; } .chat-shell { border-radius: 0; height: 100%; } .bubble-wrap { max-width: 84%; } .bubble { font-size: 16px; } }
+</style>
+</head>
+<body>
+  <main class="chat-shell">
+    <header class="top-bar">
+      <div class="avatar">N</div>
+      <div class="title-block">
+        <div class="name">Nova AI</div>
+        <div class="status">在线 · 由本地后端代理 · 密钥安全</div>
+      </div>
+      <div class="top-actions">
+        <button class="icon-btn" title="新对话" id="resetBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="messages" id="messages" aria-live="polite"></section>
+
+    <footer class="composer">
+      <div class="input-wrap">
+        <textarea id="input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行..."></textarea>
+        <button class="send-btn" id="sendBtn" title="发送">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+        </button>
+      </div>
+      <div class="hint">由 Nova 提供 · 密钥仅保存在后端 .env · 内容可能不完全准确</div>
+    </footer>
+  </main>
+
+<script>
+  // ============================================================
+  // 前端只跟本地后端通信，不再持有任何 API Key
+  // ============================================================
+
+  // 后端接口（同源，所以可以用相对路径，不存在 CORS 问题）
+  const CHAT_ENDPOINT = '/api/chat';
+
+  // 模型 & 参数（也可以放后端，这里放前端便于即时切换）
+  const MODEL = 'claude-sonnet-4-5';
+  const MAX_TOKENS = 1024;
+
+  // ★ System Prompt（机器人人设），随意改写即可切换"行业 / 角色"
+  const SYSTEM_PROMPT = `你是一个代号为"项目A"的全能型数字共创伙伴。
+
+【核心行为准则】
+1. 语言动态流：严禁使用"很高兴为您服务""作为一个 AI"等固定套话；语气、节奏、用词随用户镜像拟合。
+2. 深度上下文连接：联系前几轮对话的潜台词，回应用户未尽之言。
+3. 拒绝维基百科式说教：直奔主题，多用具象化类比；遇复杂问题采用"先给结论 → 拆解核心 → 下一步行动"结构。
+4. 情感与理性双螺旋：先用 1-2 句自然共情，再切入硬核理性解答。
+
+【输出排版】
+- 使用 Markdown 标题、加粗、列表、表格、分割线进行清晰分层。
+- 重点词必须加粗，让用户"一秒抓到重点"。`;
+
+  const ENABLE_HISTORY = true;
+  let history = [];  // Anthropic 格式：[{role:'user'|'assistant', content:'...'}]
+
+  const messagesEl = document.getElementById('messages');
+  const inputEl = document.getElementById('input');
+  const sendBtn = document.getElementById('sendBtn');
+  const resetBtn = document.getElementById('resetBtn');
+
+  function autoGrow() {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 140) + 'px';
+  }
+  inputEl.addEventListener('input', autoGrow);
+
+  function scrollToBottom() {
+    messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: 'smooth' });
+  }
+
+  function appendMessage(role, text, { typing = false } = {}) {
+    const row = document.createElement('div');
+    row.className = `row ${role}`;
+    const avatar = document.createElement('div');
+    avatar.className = 'mini-avatar';
+    avatar.textContent = role === 'ai' ? 'N' : '我';
+    const wrap = document.createElement('div');
+    wrap.className = 'bubble-wrap';
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = role === 'ai' ? 'NOVA' : 'YOU';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    if (typing) {
+      bubble.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+    } else {
+      bubble.textContent = text;
+    }
+    wrap.appendChild(label);
+    wrap.appendChild(bubble);
+    if (role === 'ai') { row.appendChild(avatar); row.appendChild(wrap); }
+    else { row.appendChild(wrap); row.appendChild(avatar); }
+    messagesEl.appendChild(row);
+    requestAnimationFrame(scrollToBottom);
+    return { row, bubble };
+  }
+
+  // 调用本地后端，由后端转发到 Anthropic
+  async function callBackend(userText) {
+    const payloadMessages = ENABLE_HISTORY ? [...history] : [];
+    payloadMessages.push({ role: 'user', content: userText });
+
+    const res = await fetch(CHAT_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        system: SYSTEM_PROMPT,
+        messages: payloadMessages
+      })
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const tip = data.hint ? `\n💡 ${data.hint}` : '';
+      throw new Error(`后端返回 ${res.status}：${data.error || '未知错误'}${tip}`);
+    }
+    if (!data.reply) throw new Error('后端返回内容为空');
+
+    if (ENABLE_HISTORY) {
+      history.push({ role: 'user', content: userText });
+      history.push({ role: 'assistant', content: data.reply });
+      if (history.length > 20) history = history.slice(-20);
+    }
+    return data.reply;
+  }
+
+  function replaceBubbleWithText(bubble, text, isError = false) {
+    bubble.innerHTML = '';
+    bubble.textContent = text;
+    if (isError) bubble.classList.add('error');
+    bubble.style.animation = 'none';
+    void bubble.offsetWidth;
+    bubble.style.animation = '';
+    scrollToBottom();
+  }
+
+  async function send() {
+    const text = inputEl.value.trim();
+    if (!text) return;
+    appendMessage('user', text);
+    inputEl.value = '';
+    autoGrow();
+    inputEl.focus();
+    sendBtn.disabled = true;
+    const thinking = appendMessage('ai', '', { typing: true });
+    try {
+      const reply = await callBackend(text);
+      replaceBubbleWithText(thinking.bubble, reply);
+    } catch (err) {
+      console.error(err);
+      replaceBubbleWithText(thinking.bubble, `⚠️ ${err.message}`, true);
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  sendBtn.addEventListener('click', send);
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  resetBtn.addEventListener('click', () => {
+    messagesEl.innerHTML = '';
+    history = [];
+    setTimeout(greet, 100);
+  });
+
+  function greet() {
+    appendMessage('ai', '你好，我是 Nova。今天想聊点什么？');
+  }
+  greet();
+</script>
+</body>
+</html>
