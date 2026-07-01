@@ -1,27 +1,22 @@
 import Anthropic from '@anthropic-ai/sdk';
-import express from 'express';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const publicDir = path.join(__dirname, '..', 'public');
 
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'claude-sonnet-4-5';
 
-// Initialize Anthropic client
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY
-});
+// 初始化 Anthropic 客戶端
+const getClient = () => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey || apiKey.includes('在这里')) {
+    throw new Error('ANTHROPIC_API_KEY 未設置');
+  }
+  return new Anthropic({ apiKey });
+};
 
-// Create Express app
-const app = express();
-app.use(express.json({ limit: '1mb' }));
+export default async function handler(req, res) {
+  // 只允許 POST 請求
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
-// Serve static files from public directory
-app.use(express.static(publicDir));
-
-// Chat API endpoint
-app.post('/api/chat', async (req, res) => {
   const {
     messages = [],
     system = '',
@@ -35,6 +30,7 @@ app.post('/api/chat', async (req, res) => {
   }
 
   try {
+    const client = getClient();
     const resp = await client.messages.create({
       model,
       max_tokens,
@@ -49,7 +45,7 @@ app.post('/api/chat', async (req, res) => {
       .join('\n')
       .trim();
 
-    // Clean trailing noise
+    // 尾部雜音清洗
     const trailingPatterns = [
       /(?:还有什么(?:我)?(?:可以|能|需要)(?:帮助|帮到|协助)(?:你|您|的)(?:吗|嘛|呢|？|\?))[\s]*[！!。.]*\s*$/g,
       /(?:希望这(?:对)?你(?:有)?(?:所)?帮助[！!。.]*\s*)$/g,
@@ -68,7 +64,7 @@ app.post('/api/chat', async (req, res) => {
     }
     reply = reply.trimEnd();
 
-    res.json({
+    res.status(200).json({
       reply,
       model: resp.model,
       stop_reason: resp.stop_reason,
@@ -83,16 +79,8 @@ app.post('/api/chat', async (req, res) => {
       status
     };
     if (status === 401) body.hint = '密钥无效。请检查 Vercel 环境变量中的 ANTHROPIC_API_KEY。';
-    if (status === 404) body.hint = '模型名不存在。请检查 DEFAULT_MODEL 或前端传入的 model。';
-    if (status === 429) body.hint = '触发限流或额度不足,请稍后重试或检查账户余额。';
+    if (status === 404) body.hint = '模型名不存在。请检查 DEFAULT_MODEL。';
+    if (status === 429) body.hint = '触发限流或额度不足，请稍后重试。';
     res.status(status).json(body);
   }
-});
-
-// Health check endpoint
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, model: DEFAULT_MODEL });
-});
-
-// Export the Express app for Vercel serverless
-export default app;
+}
