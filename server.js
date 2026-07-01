@@ -9,15 +9,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'claude-sonnet-4-5';
 
+// 驗證 API Key（只在本地開發時強制退出，Vercel 環境允許延遲驗證）
 if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.includes('在这里')) {
-  console.error('\n❌ 未检测到 ANTHROPIC_API_KEY。请：');
-  console.error('   1) 把 .env.example 复制一份并改名为 .env');
-  console.error('   2) 在 .env 里把 ANTHROPIC_API_KEY 填成你真实的 sk-ant-... 密钥');
-  console.error('   3) 重新运行 npm start\n');
-  process.exit(1);
+  if (!process.env.VERCEL) {
+    console.error('\n❌ 未检测到 ANTHROPIC_API_KEY。请：');
+    console.error('   1) 把 .env.example 复制一份并改名为 .env');
+    console.error('   2) 在 .env 里把 ANTHROPIC_API_KEY 填成你真实的 sk-ant-... 密钥');
+    console.error('   3) 重新运行 npm start\n');
+    process.exit(1);
+  } else {
+    console.warn('⚠️ Vercel 環境：ANTHROPIC_API_KEY 未設置，API 調用將失敗');
+  }
 }
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY || 'placeholder'
+});
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
