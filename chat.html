@@ -545,13 +545,13 @@
 
 
     <!-- Live2D 运行时：PIXI(v6) + Cubism2 核心 + Cubism4 核心 + pixi-live2d-display 合并版 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.5.2/browser/pixi.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.2/dist/browser/pixi.min.js"></script>
     <!-- Cubism2 核心：内置 shizuku(.model.json) 用 -->
     <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
     <!-- Cubism4 核心：用户上传的 .model3.json 模型用（本地同源，免 CDN 抽风） -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/live2dcubismcore/4.0.0/live2dcubismcore.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/live2dcubismcore@latest/live2dcubismcore.min.js"></script>
     <!-- pixi-live2d-display 合并版：同时支持 Cubism2 + Cubism4（本地同源） -->
-    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.min.js"></script>
     <script>
         (async () => {
             if (!window.PIXI || !PIXI.live2d) {
