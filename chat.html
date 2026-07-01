@@ -549,9 +549,9 @@
     <!-- Cubism2 核心：内置 shizuku(.model.json) 用 -->
     <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
     <!-- Cubism4 核心：用户上传的 .model3.json 模型用（本地同源，免 CDN 抽风） -->
-    <script src="/live2dcubismcore.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display@master/playground/assets/live2dcubismcore.min.js"></script>
     <!-- pixi-live2d-display 合并版：同时支持 Cubism2 + Cubism4（本地同源） -->
-    <script src="/pixi-live2d-display.index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/index.min.js"></script>
     <script>
         (async () => {
             if (!window.PIXI || !PIXI.live2d) {
@@ -573,7 +573,7 @@
                 resolution: window.devicePixelRatio || 1,
             });
 
-            const 内置模型URL = 'https://unpkg.com/live2d-widget-model-shizuku@1.0.5/assets/shizuku.model.json';
+            const 内置模型URL = './genaisennao_2/genaisennao_2.model3.json';
 
             let 当前模型 = null;          // 当前舞台上的 Live2DModel
             let 口型值 = 0;               // 0=闭合 1=全开，由振幅口型写入
