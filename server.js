@@ -100,9 +100,15 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, model: DEFAULT_MODEL });
 });
 
-app.listen(PORT, () => {
-  console.log(`\n✅ Nova 后端已启动`);
-  console.log(`   本地访问:  http://localhost:${PORT}/chatbot.html`);
-  console.log(`   健康检查:  http://localhost:${PORT}/api/health`);
-  console.log(`   当前模型:  ${DEFAULT_MODEL}\n`);
-});
+// 只在非 Vercel 環境下啟動服務器（本地開發時）
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`\n✅ Nova 后端已启动`);
+    console.log(`   本地访问:  http://localhost:${PORT}/chatbot.html`);
+    console.log(`   健康检查:  http://localhost:${PORT}/api/health`);
+    console.log(`   当前模型:  ${DEFAULT_MODEL}\n`);
+  });
+}
+
+// 导出 app 供 Vercel Serverless 使用
+export default app;
