@@ -1,5 +1,5 @@
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'claude-sonnet-4-5';
-const BASE_URL = process.env.AICODEMIRROR_BASE_URL || 'https://api.aicodemirror.com';
+const BASE_URL = process.env.AICODEMIRROR_BASE_URL || 'https://api.aicodemirror.com/api/claudecode';
 
 // 构造发往 AICodeMirror 中转网关的请求
 async function callAICodeMirror({ model, max_tokens, temperature, system, messages }) {

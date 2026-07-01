@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'claude-sonnet-4-5';
-const BASE_URL = process.env.AICODEMIRROR_BASE_URL || 'https://api.aicodemirror.com';
+const BASE_URL = process.env.AICODEMIRROR_BASE_URL || 'https://api.aicodemirror.com/api/claudecode';
 
 // 驗證 API Key（只在本地開發時強制退出，Vercel 環境允許延遲驗證）
 if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.includes('在这里')) {
