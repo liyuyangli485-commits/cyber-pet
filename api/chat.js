@@ -1,8 +1,8 @@
 const DEFAULT_MODEL = 'deepseek-chat';
 const BASE_URL = 'https://api.deepseek.com/v1';
 
-// Edge TTS 配置
-const DEFAULT_VOICE = 'zh-CN-XiaoxiaoNeural'; // 曉曉 - 高質量中文女聲
+// Google Translate TTS（完全免費，無需 API Key）
+const GOOGLE_TTS_URL = 'https://translate.google.com/translate_tts';
 
 // 构造发往 DeepSeek 官方 API 的请求
 async function callDeepSeek({ model, max_tokens, temperature, system, messages }) {
@@ -61,28 +61,36 @@ async function callDeepSeek({ model, max_tokens, temperature, system, messages }
   return data;
 }
 
-// Edge TTS 语音合成（完全免费，无需 API Key）
-async function callEdgeTTS(text, voice) {
+// Google Translate TTS 语音合成（完全免费，无需 API Key）
+async function callGoogleTTS(text, lang = 'zh-CN') {
   try {
-    console.log('[Edge TTS] 開始 TTS 合成', { textLength: text.length, voice });
+    console.log('[Google TTS] 開始 TTS 合成', { textLength: text.length, lang });
 
-    // 動態導入 edge-tts（避免 Vercel 構建時問題）
-    const { EdgeTTS } = await import('edge-tts');
-    const tts = new EdgeTTS();
+    // Google Translate TTS API
+    const url = `${GOOGLE_TTS_URL}?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`;
+    
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
 
-    // 生成音頻（返回 ArrayBuffer）
-    const audioBuffer = await tts.tts(text, voice || DEFAULT_VOICE);
+    if (!resp.ok) {
+      console.error('[Google TTS] TTS 失敗:', resp.status);
+      return null;
+    }
 
-    // 轉換為 base64
+    // 獲取音頻 ArrayBuffer
+    const audioBuffer = await resp.arrayBuffer();
     const base64 = Buffer.from(audioBuffer).toString('base64');
 
-    console.log('[Edge TTS] TTS 成功', { audioSize: base64.length });
+    console.log('[Google TTS] TTS 成功', { audioSize: base64.length });
     return {
       audio: base64,
-      audioFormat: 'audio/mpeg' // Edge TTS 返回 MP3 格式
+      audioFormat: 'audio/mpeg'
     };
   } catch (err) {
-    console.error('[Edge TTS] TTS 異常:', err);
+    console.error('[Google TTS] TTS 異常:', err);
     return null;
   }
 }
@@ -97,11 +105,10 @@ export default async function handler(req, res) {
     system = '',
     model = DEFAULT_MODEL,
     max_tokens = 1024,
-    temperature = 0.7,
-    voice
+    temperature = 0.7
   } = req.body || {};
 
-  console.log('[Request Received]', { messageCount: messages.length, hasSystem: !!system, voice });
+  console.log('[Request Received]', { messageCount: messages.length, hasSystem: !!system });
 
   if (!Array.isArray(messages) || messages.length === 0) {
     console.error('[Validation Failed] messages is empty or not an array');
@@ -140,8 +147,8 @@ export default async function handler(req, res) {
     }
     reply = reply.trimEnd();
 
-    // 2. 調用 Edge TTS 生成語音（完全免費）
-    const ttsResult = await callEdgeTTS(reply, voice);
+    // 2. 調用 Google TTS 生成語音（完全免費）
+    const ttsResult = await callGoogleTTS(reply, 'zh-CN');
 
     // 3. 返回文字 + 音頻
     res.status(200).json({
