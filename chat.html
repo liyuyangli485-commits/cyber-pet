@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>赛博伴侣 · 聊天室</title>
+    <!-- JSZip：本地同源优先（免 CDN 抽风），失败再退回 cloudflare CDN -->
+    <script src="/jszip.min.js"></script>
+    <script>
+        // 本地没加载到（极少数情况），用官方 CDN 兜底
+        if (typeof JSZip === 'undefined') {
+            document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"><\/script>');
+        }
+    </script>
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            font-family: 'PingFang SC', sans-serif;
+            background: linear-gradient(135deg, #2d1b24 0%, #1a0f15 100%);
+            overflow: hidden;
+        }
+
+        /* 主容器：Flexbox 垂直布局 */
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+        }
+
+        /* 顶栏：毛玻璃居中 */
+        #top-bar {
+            height: 38px; box-sizing: border-box;
+            display: flex; align-items: center; justify-content: center;
+            padding: 0 18px; margin-bottom: 15px;
+            background: rgba(255,255,255,0.08);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 19px;
+            color: #fff; font-size: 13px;
+        }
+        #usage-badge {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 13px; color: rgba(255,255,255,0.85);
+        }
+        #usage-badge.vip { color: #ffd700; font-weight: bold; }
+
+        /* ===== 主标题 ===== */
+        #main-title {
+            font-size: 24px; font-weight: 300; letter-spacing: 0.15em;
+            color: rgba(255,255,255,0.92);
+            text-shadow: 0 2px 20px rgba(255,105,180,0.4);
+            margin: 0 0 20px 0;
+        }
+
+        /* Live2D 立绘画布 */
+        #live2d-canvas {
+            width: 350px;
+            height: 500px;
+            margin-bottom: 20px;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* ===== 聊天区：毛玻璃面板 ===== */
+        #chat-container {
+            display: block !important;
+            width: 600px !important;
+            max-width: 90% !important;
+            min-height: 150px !important;
+            max-height: 350px !important;
+            background: rgba(255, 192, 203, 0.05) !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            backdrop-filter: blur(20px) !important;
+            -webkit-backdrop-filter: blur(20px) !important;
+            border-radius: 16px !important;
+            padding: 20px !important;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4) !important;
+            overflow-y: auto !important;
+            box-sizing: border-box !important;
+            margin: -60px auto 0 auto !important;
+            z-index: 10 !important;
+            scrollbar-width: thin !important;
+        }
+        #chat-container::-webkit-scrollbar { width: 0; background: transparent; }
+
+        /* 消息气泡 */
+        .msg-me, .msg-her, .welcome {
+            margin: 14px 0; line-height: 1.7; font-size: 16px;
+            letter-spacing: 0.02em; max-width: 92%;
+            text-shadow: 0 1px 8px rgba(0,0,0,0.45);
+            animation: 浮现 0.5s ease both;
+        }
+        .msg-me  { color: #8fe9ff; text-align: right; margin-left: auto; }
+        .msg-her { color: #ffd1e8; }
+        .welcome { color: rgba(255,209,232,0.85); font-style: italic; }
+        @keyframes 浮现 { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+        /* ===== 输入区：毛玻璃胶囊 ===== */
+        #input-container {
+            width: 62%; max-width: 700px;
+            display: flex; align-items: center; gap: 12px;
+            background: rgba(255,255,255,0.08);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 28px;
+            padding: 8px 16px;
+            margin-top: auto !important;
+            margin-bottom: 20px !important;
+            flex-shrink: 0 !important;
+        }
+        input {
+            flex: 1; padding: 10px 4px; font-size: 15px; color: #fff;
+            background: transparent; border: none; border-radius: 0; outline: none;
+        }
+        input::placeholder { color: rgba(255,255,255,0.35); }
+
+        /* 发送按钮：玻璃态圆角 */
+        button {
+            padding: 8px 18px; border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 18px;
+            background: rgba(255,105,180,0.25);
+            backdrop-filter: blur(10px);
+            color: rgba(255,255,255,0.9);
+            font-size: 14px; letter-spacing: 0.12em; font-weight: 500;
+            cursor: pointer; transition: all 0.3s ease;
+        }
+        button:hover { background: rgba(255,105,180,0.45); }
+        button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+
+    </style>
+</head>
+<body>
+
+    <!-- 顶栏 -->
+    <div id="top-bar">
+        <div id="usage-badge">连接中…</div>
+    </div>
+
+    <!-- 主标题 -->
+    <h1 id="main-title">欢迎回家主人</h1>
+
+    <!-- Live2D 立绘画布（居中） -->
+    <canvas id="live2d-canvas"></canvas>
+
+    <div id="chat-container">
+        <div class="msg-her welcome">……（挑眉）哼，你终于舍得连接我了？今天只有 30 次机会，没事别来烦我。</div>
+    </div>
+
+    <div id="input-container">
+        <input type="text" id="user-input" placeholder="和她说点什么……">
+        <button id="send-btn" onclick="sendMessage()">发送</button>
+    </div>
+
+    <script>
+        // ==================== 匿名设备ID（localStorage 持久化）====================
+        // 不做账号登录，用一个本机持久的随机ID作为后端限次/VIP判定的身份。
+        const 设备ID键 = 'cyberpet_device_id';
+        function 取设备ID() {
+            let id = localStorage.getItem(设备ID键);
+            if (!id) {
+                // 优先用浏览器原生 crypto.randomUUID，退回时间戳+随机
+                id = (window.crypto && crypto.randomUUID)
+                    ? crypto.randomUUID()
+                    : 'dev-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+                localStorage.setItem(设备ID键, id);
+            }
+            return id;
+        }
+        const 设备ID = 取设备ID();
+
+        // ==================== 顶栏用量徽标 ====================
+        const usageBadge = document.getElementById('usage-badge');
+        function 渲染用量(u) {
+            if (!u) { usageBadge.textContent = '离线'; return; }
+            if (u.isVip) {
+                usageBadge.classList.add('vip');
+                usageBadge.textContent = '👑 VIP · R1 满血';
+            } else {
+                usageBadge.classList.remove('vip');
+                const 剩 = (u.remaining == null) ? u.limit : u.remaining;
+                usageBadge.textContent = `今日剩余 ${剩}/${u.limit} 次`;
+            }
+        }
+        // 进入页面先拉一次用量
+        async function 刷新用量() {
+            try {
+                const r = await fetch(`/api/usage?deviceId=${encodeURIComponent(设备ID)}`);
+                if (r.ok) 渲染用量(await r.json());
+            } catch (e) { console.warn('用量查询失败:', e); }
+        }
+        刷新用量();
+
+        // ==================== Web Speech API 语音合成 ====================
+        // 优先挑选的中文女声（按优先级从高到低），命中其一即用
+        const PREFERRED_VOICES = [
+            'Microsoft Xiaoxiao',   // Edge 晓晓，二次元少女音质最佳
+            'Microsoft Xiaoyi',     // Edge 晓伊
+            'Microsoft Yunxi',      // Edge 云希（备选）
+            'Microsoft Huihui',     // Win 自带 慧慧
+            'Ttinghua', 'Tingting', '婷婷',  // Google/Apple 婷婷
+            'Google 普通话',         // Chrome 中文女声
+        ];
+
+        let chosenVoice = null;
+
+        // 声音列表是异步加载的，需要在 voiceschanged 后再挑
+        function pickVoice() {
+            const voices = window.speechSynthesis.getVoices();
+            if (!voices.length) return;
+
+            // 1) 先按偏好名单精确/模糊匹配
+            for (const name of PREFERRED_VOICES) {
+                const hit = voices.find(v => v.name.includes(name));
+                if (hit) { chosenVoice = hit; break; }
+            }
+            // 2) 没命中名单，就退而求其次：任意中文声音
+            if (!chosenVoice) {
+                chosenVoice = voices.find(v => /zh|cmn|中文|Chinese/i.test(v.lang + v.name)) || null;
+            }
+            if (chosenVoice) {
+                console.log('🔊 选用语音:', chosenVoice.name, `(${chosenVoice.lang})`);
+            } else {
+                console.warn('未找到中文语音，将使用浏览器默认嗓音');
+            }
+        }
+
+        // 初次加载 + 列表变化时都重新挑
+        pickVoice();
+        if (typeof speechSynthesis !== 'undefined') {
+            window.speechSynthesis.onvoiceschanged = pickVoice;
+        }
+
+        // ==================== Live2D 口型驱动接口 ====================
+        // Live2D 初始化脚本会把真正的 setter 挂到 window.Live2DMouth 上。
+        // 这里先放一个空壳，保证即使立绘没加载成功，发声逻辑也不会报错。
+        window.Live2DMouth = window.Live2DMouth || { set() {} };
+
+        // ==================== 主路径：后端音频（WAV/MP3 动态对齐）+ Web Audio 振幅口型 ====================
+        // 复用同一套 音频元素 / AudioContext / AnalyserNode：
+        // MediaElementSource 对同一个 <audio> 只能创建一次，复用最省事也最稳。
+        let _audio = null, _audioCtx = null, _analyser = null, _timeData = null, _ampRAF = null;
+
+        // 必须在用户手势（点击发送）内首次创建/解锁 AudioContext，否则自动播放被策略拦截
+        function ensureAudioGraph() {
+            if (_audioCtx) {
+                if (_audioCtx.state === 'suspended') _audioCtx.resume();
+                return;
+            }
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) { console.warn('浏览器不支持 Web Audio API'); return; }
+
+            _audio = new Audio();
+            _audio.crossOrigin = 'anonymous';
+            _audioCtx = new Ctx();
+            const source = _audioCtx.createMediaElementSource(_audio);
+            _analyser = _audioCtx.createAnalyser();
+            _analyser.fftSize = 512;                       // 频域分辨率，足够算 RMS
+            source.connect(_analyser);
+            _analyser.connect(_audioCtx.destination);      // 接到扬声器，否则听不到
+            _timeData = new Uint8Array(_analyser.fftSize);
+
+            _audio.onended = stopAmplitudeMouth;
+            _audio.onerror = stopAmplitudeMouth;
+        }
+
+        // 逐帧把音频振幅(RMS)映射到嘴巴开合
+        function startAmplitudeMouth() {
+            cancelAnimationFrame(_ampRAF);
+            const loop = () => {
+                _analyser.getByteTimeDomainData(_timeData);
+                // 计算 RMS：每个采样点相对 128 中心的偏移
+                let sum = 0;
+                for (let i = 0; i < _timeData.length; i++) {
+                    const v = (_timeData[i] - 128) / 128;
+                    sum += v * v;
+                }
+                const rms = Math.sqrt(sum / _timeData.length);   // 通常 0~0.3
+                const mouth = Math.min(1, rms * 3.5);            // 增益放大到 0~1
+                window.Live2DMouth.set(mouth);
+                _ampRAF = requestAnimationFrame(loop);
+            };
+            loop();
+        }
+
+        function stopAmplitudeMouth() {
+            cancelAnimationFrame(_ampRAF);
+            _ampRAF = null;
+            window.Live2DMouth.set(0); // 闭嘴
+        }
+
+        // 播放后端返回的音频（Fish Audio 二次元角色 WAV / SiliconFlow 兜底 MP3），并启动振幅口型
+        function playWithLipSync(base64, mime) {
+            if (!_audioCtx) ensureAudioGraph();
+            if (!_audio) return false; // Web Audio 不可用
+            if (_audioCtx.state === 'suspended') _audioCtx.resume();
+
+            // base64 -> Blob -> ObjectURL
+            // ★ MIME 动态对齐后端：Fish Audio 返回 'audio/wav'，SiliconFlow 返回 'audio/mpeg'
+            //   后端 audioFormat 字段驱动，浏览器自动调用对应解码器 → 无鬼畜、无变速
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const url = URL.createObjectURL(new Blob([bytes], { type: mime || 'audio/wav' }));
+
+            // 释放上一段 ObjectURL
+            if (_audio.dataset.url) URL.revokeObjectURL(_audio.dataset.url);
+            _audio.dataset.url = url;
+
+            _audio.src = url;
+            _audio.onplay = startAmplitudeMouth;
+            _audio.play().catch(err => {
+                console.warn('音频自动播放被拦截:', err);
+                stopAmplitudeMouth();
+            });
+            return true;
+        }
+
+        // ==================== 兜底路径：speechSynthesis + 合成式口型 ====================
+        // 仅当后端没返回音频（TTS 失败）时启用，保证她至少还会出声、嘴还会动。
+        let mouthRAF = null, mouthSafetyTimer = null;
+
+        function startSyntheticMouth(estimatedMs) {
+            stopSyntheticMouth();
+            const t0 = performance.now();
+            const loop = () => {
+                const t = (performance.now() - t0) / 1000;
+                let v = 0.5 + 0.5 * Math.sin(t * 18);
+                v *= (0.55 + 0.45 * Math.random());
+                window.Live2DMouth.set(Math.max(0, Math.min(1, v)));
+                mouthRAF = requestAnimationFrame(loop);
+            };
+            loop();
+            if (estimatedMs > 0) mouthSafetyTimer = setTimeout(stopSyntheticMouth, estimatedMs + 2500);
+        }
+
+        function stopSyntheticMouth() {
+            if (mouthRAF) { cancelAnimationFrame(mouthRAF); mouthRAF = null; }
+            if (mouthSafetyTimer) { clearTimeout(mouthSafetyTimer); mouthSafetyTimer = null; }
+            window.Live2DMouth.set(0);
+        }
+
+        function fallbackSpeak(text) {
+            if (typeof speechSynthesis === 'undefined') return;
+            window.speechSynthesis.cancel();
+            stopSyntheticMouth();
+
+            const utter = new SpeechSynthesisUtterance(text);
+            if (chosenVoice) utter.voice = chosenVoice;
+            utter.lang = (chosenVoice && chosenVoice.lang) || 'zh-CN';
+            utter.rate = 1.2;
+            utter.pitch = 1.1;
+            utter.volume = 1.0;
+
+            const estimatedMs = (text.length / (5 * utter.rate)) * 1000;
+            utter.onstart = () => startSyntheticMouth(estimatedMs);
+            utter.onend = stopSyntheticMouth;
+            utter.onerror = stopSyntheticMouth;
+            window.speechSynthesis.speak(utter);
+            startSyntheticMouth(estimatedMs);
+        }
+
+        // =========== 獨立隔離的情感動作外掛（上一輪污染教訓的隔離重做） ===========
+        // 三層語意硬核提取 + 盲猜調用 + 文本清洗，全部用 try/catch 物理隔離，
+        // 即使外掛全炸，主流程仍走原始文本繼續口型 ticker，不準砸毀任何東西。
+        function triggerLive2DEmotion(text) {
+            let emotion = null;
+            let 清洗 = text;
+
+            try {
+                if (typeof text !== 'string') return text;
+
+                // 第 1 層：顯式標籤 [emotion:xxx]
+                const 顯式 = text.match(/\[\s*emotion\s*:\s*([a-zA-Z]+)\s*\]/i);
+                if (顯式) emotion = 顯式[1].toLowerCase();
+
+                // 第 2 層：全角括號微表情 (挑眉)(生氣)(哼)(臉紅)(哈哈)...
+                if (!emotion) {
+                    const 括 = text.match(/[\(（][^()（）]{1,6}[\)）]/g) || [];
+                    const 詞表 = {
+                        'angry': ['生氣', '愤怒', '憤怒', '怒', '哼', '氣', '可惡', '可恶', '挑眉', '瞪', '氣死', '死笨蛋', '惹我'],
+                        'shyness': ['害羞', '臉紅', '脸红', '扭頭', '扭头', '羞', '唔', '別看', '别看', '扭捏', '討厭', '讨厌', '傲嬌', '傲娇'],
+                        'happy': ['高興', '高兴', '開心', '开心', '哈哈', '笑', '嘻嘻', '嘿嘿'],
+                        'surprised': ['震驚', '震惊', '驚訝', '惊讶', '啊？', '啊?', '诶', '咦', '不會吧', '不会吧']
+                    };
+                    for (const 段 of 括) {
+                        for (const [cat, ks] of Object.entries(詞表)) {
+                            if (ks.some(k => 段.includes(k))) { emotion = cat; break; }
+                        }
+                        if (emotion) break;
+                    }
+                }
+
+                // 第 3 層：整句兜底
+                if (!emotion) {
+                    if (/(生氣|愤怒|憤怒|笨蛋|開會員|开会员|可惡|可恶|氣死|哼你|惹我)/.test(text)) emotion = 'angry';
+                    else if (/(害羞|討厭|讨厌|臉紅|脸红|笨手笨腳|笨手笨脚|扭捏|傲嬌|傲娇)/.test(text)) emotion = 'shyness';
+                    else if (/(高興|高兴|開心|开心|哈哈|嘻嘻|嘿嘿|笑)/.test(text)) emotion = 'happy';
+                    else if (/(震驚|震惊|驚訝|惊讶|啊？|啊\?|不會吧|不会吧)/.test(text)) emotion = 'surprised';
+                }
+
+                // 文本清洗：物理剔除顯式標籤 + 全角括號微表情 + 多餘空格
+                清洗 = text
+                    .replace(/\[\s*emotion\s*:\s*[a-zA-Z]+\s*\]/gi, '')
+                    .replace(/[\(（][^()（）]{1,6}[\)）]/g, '')
+                    .replace(/\s{2,}/g, ' ')
+                    .trim();
+            } catch (extractErr) {
+                console.warn('🤫 情感提取階段異常被隔離:', extractErr && extractErr.message);
+                return text; // 提取階段炸了就原文本返回，動作層根本不會調
+            }
+
+            // Honolulu 14 個動作全裝在名為 "" 的單一空組裡，
+            // 用 model.motion(group='', index=N) 直接索引觸發。
+            // 用戶實機鎖定的情感→動畫索引映射：
+            //   angry → 13（叉腰/生氣招牌）
+            //   shyness → 3（微幅晃動）
+            //   surprised → 1（驚訝）
+            //   happy → 0（高興）
+            // 不碰 expression（該模型無表情文件）。try/catch 沙盒防禦，主流程絕不受影響。
+            try {
+                if (emotion && window.currentModel && !window.currentModel.destroyed) {
+                    const 索引表 = { 'angry': 13, 'shyness': 3, 'surprised': 1, 'happy': 0 };
+                    const idx = 索引表[emotion];
+                    if (idx != null) {
+                        const m = window.currentModel;
+                        if (typeof m.motion === 'function') m.motion('', idx);
+                    }
+                }
+            } catch (e) {
+                console.warn('🤫 動作播放失敗被沙盒隔離:', e && e.message);
+            }
+
+            return 清洗;
+        }
+
+        // 統一入口：優先用後端音頻做真振幅口型，沒有則退回 speechSynthesis
+        function speakReply(data) {
+            // 外掛用獨立 try/catch 隔離；觸發文本若 undefined 則回退原始文本，主流程絕不中斷
+            let 觸發文本 = data && data.reply;
+            try {
+                const r = triggerLive2DEmotion(data && data.reply);
+                if (typeof r === 'string') 觸發文本 = r;
+            } catch (outerErr) {
+                console.warn('🤫 情感外掛整體異常被物理隔離:', outerErr && outerErr.message);
+            }
+            const data2 = { ...data, reply: 觸發文本 };
+
+            if (data.audio) {
+                const ok = playWithLipSync(data.audio, data.audioFormat);
+                if (!ok) fallbackSpeak(data2.reply); // Web Audio 不可用時再退回
+            } else {
+                console.warn('後端未返回音頻，使用 speechSynthesis 兜底');
+                fallbackSpeak(data2.reply);
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('user-input');
+            const chatContainer = document.getElementById('chat-container');
+            const userText = input.value.trim();
+
+            if(!userText) return;
+
+            // 在用户手势内解锁/创建 AudioContext（关键：否则后续 play() 被自动播放策略拦截）
+            ensureAudioGraph();
+
+            // 显示用户消息
+            chatContainer.innerHTML += `<div class="msg-me">${userText}</div>`;
+            input.value = '';
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            // 显示加载提示
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'msg-her';
+            loadingDiv.style.opacity = '0.6';
+            loadingDiv.textContent = '她正在思考...';
+            chatContainer.appendChild(loadingDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            try {
+                // 调用后端 API（相对路径，前后端同源由 Express 一起托管），带上匿名设备ID
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message: userText, deviceId: 设备ID })
+                });
+
+                const data = await response.json();
+
+                // 移除加载提示
+                loadingDiv.remove();
+
+                if (response.ok) {
+                    if (data.limited) {
+                        // 普通用户当日免费额度用尽：显示傲娇限次文案 + 开通会员占位
+                        chatContainer.innerHTML += `<div class="msg-her" style="color:#ffcc88;">${data.reply}</div>`;
+                        chatContainer.innerHTML += `<div style="margin:8px 0; text-align:center;"><span style="display:inline-block;padding:8px 20px;border-radius:18px;background:linear-gradient(90deg,#ffd700,#ff9a3c);color:#3a2400;font-weight:bold;cursor:pointer;letter-spacing:0.05em;" onclick="提示开通会员()">✨ 开通会员 · 解锁满血 R1 无限畅聊</span></div>`;
+                        渲染用量({ isVip: false, remaining: 0, limit: data.remaining != null ? 30 : 30 });
+                        刷新用量();
+                    } else {
+                        // 正常回复
+                        chatContainer.innerHTML += `<div class="msg-her">${data.reply}</div>`;
+                        // 文字渲染的同时，播放后端音频并用振幅驱动口型
+                        speakReply(data);
+                        // 更新顶栏剩余次数（VIP 时 remaining 为 null）
+                        if (data.isVip) {
+                            渲染用量({ isVip: true });
+                        } else if (typeof data.remaining === 'number') {
+                            渲染用量({ isVip: false, remaining: data.remaining, limit: 30 });
+                        }
+                    }
+                } else {
+                    // 显示错误信息
+                    chatContainer.innerHTML += `<div class="msg-her" style="color:#ff8080;">${data.error || '未知错误'}</div>`;
+                }
+
+            } catch (error) {
+                // 移除加载提示
+                loadingDiv.remove();
+                // 显示网络错误
+                chatContainer.innerHTML += `<div class="msg-her" style="color:#ff8080;">连接不上服务器，确认后端已启动了吗……笨蛋。</div>`;
+                console.error('请求失败:', error);
+            }
+
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // 开通会员占位（后续接支付弹窗）
+        function 提示开通会员() {
+            alert('会员订阅即将上线~\n\n开通后解锁满血 R1 推理模型，无限畅聊。\n（当前为底层接口预留，支付弹窗后续接入）');
+        }
+
+        // 支持回车发送
+        document.getElementById('user-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+
+
+
+    <!-- Live2D 运行时：PIXI(v6) + Cubism2 核心 + Cubism4 核心 + pixi-live2d-display 合并版 -->
+    <script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.2/dist/browser/pixi.min.js"></script>
+    <!-- Cubism2 核心：内置 shizuku(.model.json) 用 -->
+    <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+    <!-- Cubism4 核心：用户上传的 .model3.json 模型用（本地同源，免 CDN 抽风） -->
+    <script src="/live2dcubismcore.min.js"></script>
+    <!-- pixi-live2d-display 合并版：同时支持 Cubism2 + Cubism4（本地同源） -->
+    <script src="/pixi-live2d-display.index.min.js"></script>
+    <script>
+        (async () => {
+            if (!window.PIXI || !PIXI.live2d) {
+                console.warn('Live2D 运行时未加载（CDN 受阻？），聊天与语音仍可用。');
+                return;
+            }
+            const Live2DModel = PIXI.live2d.Live2DModel;
+
+            // sharedTicker:true 让模型自动更新与我们的口型覆盖跑在同一个 ticker 上
+            const app = new PIXI.Application({
+                view: document.getElementById('live2d-canvas'),
+                autoStart: true,
+                sharedTicker: true,
+                backgroundAlpha: 0,
+                antialias: true,
+                width: 360,                 // 与 CSS 画布尺寸一致，避免立绘被拉伸
+                height: 480,
+                autoDensity: true,          // 配合 resolution 适配高分屏，CSS 尺寸保持 360x480
+                resolution: window.devicePixelRatio || 1,
+            });
+
+            const 内置模型URL = 'https://unpkg.com/live2d-widget-model-shizuku@1.0.5/assets/shizuku.model.json';
+
+            let 当前模型 = null;          // 当前舞台上的 Live2DModel
+            let 口型值 = 0;               // 0=闭合 1=全开，由振幅口型写入
+            let 本地blob列表 = [];        // 本地模型生成的 ObjectURL，换模型时统一释放
+            const 内存资源 = new Map();   // blobURL → ArrayBuffer，供 Live2DLoader 拦截器精确直供
+            const 归一缓冲 = new Map();   // 归一化路径键 → ArrayBuffer，供拦截器「模糊归一」兜底匹配
+
+            // 路径模糊归一化：剔除 origin 前缀(如 http://localhost:3000/)、查询/锚点、
+            // 开头的 ./ 与 /，并统一转小写。让"库怎么解析路径"都能对齐到解压时的键。
+            function 归一化(p) {
+                if (!p) return '';
+                let s = String(p).split('?')[0].split('#')[0];
+                s = s.replace(/^[a-z]+:\/\/[^/]+\//i, ''); // 去掉 http(s)://host/ 这类 origin 前缀
+                s = s.replace(/^\.?\/+/, '');               // 去掉开头的 ./ 或 /
+                return s.toLowerCase();
+            }
+
+            // ====== 关键：拦截 pixi-live2d-display 的 Live2DLoader 中间件链 ======
+            // 方案B 的本地模型，所有 moc3/物理/动作/表情 都走 Live2DLoader（末端是 XHR）。
+            // 直接对解压出的 blob 发 XHR 在某些环境会报 "Network error"（库内部 resolveURL
+            // 可能弄坏 blob 协议的 URL）。这里在中间件链「最前面」插一层：凡命中内存资源就
+            // 直接喂回 ArrayBuffer/JSON 并短路返回，绝不进入 XHR、绝不产生任何网络请求。
+            (function 安装内存拦截器() {
+                const L = PIXI.live2d && PIXI.live2d.Live2DLoader;
+                if (!L || !Array.isArray(L.middlewares) || L.__内存拦截已装) return;
+                L.middlewares.unshift(async (context, next) => {
+                    let buf = 内存资源.get(context.url);
+                    // 0) image / data 兜底：若库把 data:URL 拆解或改写后回查，按 base64 前缀反查像素
+                    if (!buf && context.url && context.type === 'arraybuffer') {
+                        const low = String(context.url).toLowerCase();
+                        if (low.startsWith('data:image/') || low.startsWith('data:application/octet-stream')) {
+                            const comma = String(context.url).indexOf(',');
+                            if (comma > 0) {
+                                const head = String(context.url).slice(0, Math.min(comma + 60, context.url.length));
+                                buf = 内存资源.get(head);
+                            }
+                        }
+                    }
+                    // 1) 模糊归一匹配：剔除 origin/前缀斜杠/大小写差异后比对
+                    if (!buf && context.url) {
+                        const nk = 归一化(context.url);
+                        buf = 归一缓冲.get(nk) || 归一缓冲.get(归一化(context.url.split('/').pop()));
+                    }
+                    // 2) 子串兜底：库可能改写过 URL，按 blob 唯一串再兜一次
+                    if (!buf && context.url) {
+                        for (const [k, v] of 内存资源) {
+                            if (context.url.indexOf(k) !== -1) { buf = v; break; }
+                        }
+                    }
+                    if (buf) {
+                        if (context.type === 'arraybuffer') {
+                            context.result = buf.slice(0);            // 拷贝一份，避免被复用销毁
+                        } else {
+                            const 文本 = new TextDecoder('utf-8').decode(buf);
+                            // Live2DLoader 对 json 类型期望已解析对象（responseType='json'）
+                            context.result = (context.type === 'json') ? JSON.parse(文本) : 文本;
+                        }
+                        return; // 短路：不调用 next()，不发任何网络请求
+                    }
+                    // 未命中：打印当前请求寻找的路径，便于排查键值未对齐
+                    console.error('🔍 拦截器未命中，当前请求寻找的路径是：', context.url,
+                                  '（归一化后：' + 归一化(context.url) + '）');
+                    return next();
+                });
+                L.__内存拦截已装 = true;
+            })();
+
+            // 口型 setter 始终有效（即使没有模型也不报错）
+            window.Live2DMouth = {
+                set(v) { 口型值 = Math.max(0, Math.min(1, v)); }
+            };
+
+            // 把模型放上舞台：缩放居中 + 注册口型覆盖 ticker
+            function 安置模型(model) {
+                // 移除旧模型并销毁，避免叠加与内存泄漏
+                if (当前模型) {
+                    app.stage.removeChild(当前模型);
+                    当前模型.destroy({ children: true });
+                    当前模型 = null;
+                }
+                当前模型 = model;
+                // 焊死到全局 window.currentModel —— 暴力调试 / 音频驱动链 / 控制台脚本都通过它
+                // 反查活动实例。每次新模型上场都覆盖旧指针，杜绝读到一个已 destroy 的僵尸实例。
+                window.currentModel = model;
+                window.__live2d = { app, model };
+                console.log('🔗 当前活动模型已焊死到 window.currentModel + window.__live2d.model');
+                app.stage.addChild(model);
+                model.anchor.set(0.5, 0.5);
+
+                // 仅监听 pixi 内部的 error 事件做诊断 —— 绝不主动调 destroy、绝不置 null。
+                // pixi 自身若因纹理/moc3/动作加载失败触发 error，会把真实异常透传过来，
+                // 这是定位「为何模型出现即销毁」的根本线索。
+                if (typeof model.on === 'function') {
+                    model.on('error', (e) => {
+                        console.error('🔴 [pixi error] 模型真实加载错误:', e && (e.detail || e.message || e));
+                    });
+                }
+
+                // 自适应缩放并居中到画布。
+                // s 拿到"刚好填满画布"的基础值；×1.8 物理放大让大半身像优雅贴合右下角，
+                // 在 100% 网页缩放下保持锐利（resolution 仍是 devicePixelRatio，超清不糊）。
+                const s = Math.min(app.screen.width / model.width, app.screen.height / model.height) * 1.8;
+                model.scale.set(s);
+                // y 锚点下移：让立绘往下沉，头部贴近上沿、裙摆部分留给画布底边。
+                model.position.set(app.screen.width / 2, app.screen.height * 0.62);
+
+                // 关掉 pixi-live2d-display 默认的滚轮缩放手势，杜绝用户再次误操作拉糊。
+                if (model.eventMode) model.eventMode = 'none';
+                model.interactive = false;
+                // 部分版本还挂在 on('wheel') 上，逐个 dispose 兜底。
+                if (model.removeAllListeners) { try { model.removeAllListeners('wheel'); } catch (_) {} }
+
+                // 口型覆盖：双轨全量 + 双 hook 强压 physics 覆盖。
+                // pixi-live2d-display 内部 update 顺序：
+                //   beforeMotionUpdate → motion 写参 → afterMotionUpdate →
+                //   saveParameters → eyeBlink/expression → updateFocus → updateNaturalMovements →
+                //   ★★ physics.update() ← 物理把 mouth 改回 0 就发生在这 →
+                //   beforeModelUpdate → coreModel.update() → loadParameters → render
+                // 单挂 afterMotionUpdate 不够（physics 在它之后），单挂 ticker 也不够（render 前可能又被 loadParameters 覆盖）。
+                // 所以三道防线：
+                //   (1) afterMotionUpdate：motion 写完后先写一次
+                //   (2) beforeModelUpdate：physics 跑完后再写一次 ← 关键,这是 physics 之后、render 之前最后窗口
+                //   (3) UTILITY ticker：每帧再补一道
+                // 振幅值从音频链写入 window.currentMouthValue，hook 与 ticker 都读它。
+                const core = model.internalModel.coreModel;
+                window.currentMouthValue = 0;
+                // 把 setter 同步到 window.currentMouthValue，统一中转
+                window.Live2DMouth.set = function (v) {
+                    window.currentMouthValue = Math.max(0, Math.min(1, v));
+                    口型值 = window.currentMouthValue;
+                };
+
+                const 写入口型 = (来源) => {
+                    const v = window.currentMouthValue || 0;
+                    const core_ = model.internalModel && model.internalModel.coreModel;
+                    if (!core_) return;
+                    // ★ 三轨多 ID 全量焊死写入 —— 不同模型的张嘴参数 ID 各异
+                    // （标准 ParamMouthOpenY、自定义 ParamSlysMouthOpen、变体 ParamOpen 等），
+                    // 因此每次写到嘴就同时打这三个,谁的 hook 命中就算谁,不被任何 motion 覆盖。
+                    // 外加 C2 兼容历史 ID（Cubism2 用 setParamFloat + 字符串 ID）。
+                    const cubism4_ids = ['ParamMouthOpenY', 'ParamSlysMouthOpen', 'ParamOpen'];
+                    const cubism2_ids = ['PARAM_MOUTH_OPEN_Y', 'ParamSlysMouthOpen', 'ParamOpen'];
+                    try {
+                        if (typeof core_.setParameterValueById === 'function') {
+                            for (const id of cubism4_ids) {
+                                try { core_.setParameterValueById(id, v); } catch (_) {}
+                            }
+                        }
+                    } catch (_) {}
+                    try {
+                        if (typeof core_.setParamFloat === 'function') {
+                            for (const id of cubism2_ids) {
+                                try { core_.setParamFloat(id, v); } catch (_) {}
+                            }
+                        }
+                    } catch (_) {}
+                };
+
+                // 三道生命周期钩子 + ticker = 4 道全量写入口型，
+                // 覆盖 pixi-live2d-display 内部 motion / physics / loadParam 全环节。
+                if (typeof model.on === 'function') {
+                    model.on('beforeMotionUpdate', 写入口型);
+                    model.on('afterMotionUpdate', 写入口型);
+                    model.on('beforeModelUpdate', 写入口型);
+                }
+                model.__mouthTicker = () => 写入口型('ticker');
+                app.ticker.add(model.__mouthTicker, null, PIXI.UPDATE_PRIORITY.UTILITY);
+            }
+
+            // 通用加载入口：来源可以是 URL 字符串，或本地解压后的 settings 对象
+            async function 加载模型(来源) {
+                const model = await Live2DModel.from(来源);
+                安置模型(model);
+                return model;
+            }
+
+            // 先加载内置模型
+            try {
+                await 加载模型(内置模型URL);
+            } catch (e) {
+                console.error('内置 Live2D 模型加载失败:', e);
+            }
+
+            
+        })();
+    </script>
+</body>
+</html>

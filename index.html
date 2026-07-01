@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CYBER PET INC.</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet">
+
+    <style>
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0a0008;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        /* ========== DYNAMIC ANIME NEBULA BACKGROUND ========== */
+        .nebula-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            object-fit: cover;
+            filter: brightness(0.7);
+            animation: nebulaBreath 20s ease-in-out infinite;
+            transform-origin: center center;
+        }
+
+        @keyframes nebulaBreath {
+            0%   { transform: scale(1.0) translate(0, 0); }
+            25%  { transform: scale(1.02) translate(-0.5%, -0.3%); }
+            50%  { transform: scale(1.04) translate(0.3%, -0.5%); }
+            75%  { transform: scale(1.02) translate(0.5%, 0.3%); }
+            100% { transform: scale(1.0) translate(0, 0); }
+        }
+
+        .bg-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            background: radial-gradient(
+                ellipse at 50% 50%,
+                rgba(10, 0, 20, 0.2) 0%,
+                rgba(10, 0, 20, 0.6) 60%,
+                rgba(5, 0, 10, 0.9) 100%
+            );
+            pointer-events: none;
+        }
+
+        /* ========== NAVIGATION BAR ========== */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 28px 48px;
+            background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, transparent 100%);
+        }
+
+        .nav-brand {
+            font-size: 0.85rem;
+            font-weight: 500;
+            letter-spacing: 3px;
+            color: rgba(255, 255, 255, 0.9);
+            text-transform: uppercase;
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 36px;
+        }
+
+        .nav-links a {
+            font-size: 0.8rem;
+            font-weight: 400;
+            letter-spacing: 1.5px;
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            text-transform: uppercase;
+            transition: color 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: rgba(255, 100, 180, 0.9);
+        }
+
+        .nav-hamburger {
+            width: 24px;
+            height: 18px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            cursor: pointer;
+            margin-left: 28px;
+        }
+
+        .nav-hamburger span {
+            display: block;
+            width: 100%;
+            height: 1.5px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 1px;
+            transition: all 0.3s ease;
+        }
+
+        .nav-hamburger:hover span {
+            background: rgba(255, 100, 180, 0.9);
+        }
+
+        /* ========== MAIN CONTENT ========== */
+        .main-content {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* ========== HERO TEXT — Playfair Display Italic Serif ========== */
+        .hero-text {
+            font-family: 'Playfair Display', 'Didot', serif;
+            font-size: 4.5rem;
+            font-style: italic;
+            color: #ffffff;
+            text-shadow: 0 0 20px rgba(255, 0, 127, 0.5);
+            letter-spacing: -1px;
+            text-align: center;
+            font-weight: 300;
+            line-height: 1.2;
+            margin-bottom: 60px;
+            opacity: 0;
+            animation: fadeInUp 1.5s ease forwards 0.5s;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ========== LIQUID GLASS BUTTON ========== */
+        .glass-button {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            box-shadow:
+                0 0 30px rgba(255, 0, 127, 0.15),
+                inset 0 0 20px rgba(255, 255, 255, 0.05);
+            opacity: 0;
+            animation: fadeInUp 1.5s ease forwards 1s;
+        }
+
+        .glass-button:hover {
+            transform: scale(1.08);
+            border-color: rgba(255, 100, 180, 0.5);
+            background: rgba(255, 255, 255, 0.12);
+            box-shadow:
+                0 0 50px rgba(255, 0, 127, 0.35),
+                inset 0 0 30px rgba(255, 255, 255, 0.08);
+        }
+
+        .glass-button:active {
+            transform: scale(0.96);
+        }
+
+        .glass-button span {
+            font-size: 0.85rem;
+            font-weight: 400;
+            letter-spacing: 3px;
+            color: rgba(255, 255, 255, 0.9);
+            text-transform: uppercase;
+        }
+
+        /* ========== RESPONSIVE ========== */
+        @media (max-width: 768px) {
+            .hero-text {
+                font-size: 2.8rem;
+                padding: 0 20px;
+            }
+            .navbar {
+                padding: 20px 24px;
+            }
+            .nav-links a {
+                font-size: 0.7rem;
+            }
+            .nav-links {
+                gap: 18px;
+            }
+            .glass-button {
+                width: 120px;
+                height: 120px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ===== DYNAMIC ANIME NEBULA BACKGROUND ===== -->
+    <img
+        class="nebula-bg"
+        id="nebulaBg"
+        src="https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=1920&q=80&auto=format"
+        alt=""
+        loading="eager"
+    >
+    <div class="bg-overlay"></div>
+
+    <!-- ===== NAVIGATION ===== -->
+    <nav class="navbar">
+        <div class="nav-brand">CYBER PET INC.</div>
+        <div class="nav-links">
+            <a href="#protocol">Protocol</a>
+            <a href="#status">Status</a>
+            <a href="#database">Database</a>
+            <div class="nav-hamburger" onclick="this.classList.toggle('active')">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <main class="main-content">
+        <h1 class="hero-text">
+            Time to connect<br>the cyber eternity
+        </h1>
+
+        <div class="glass-button" onclick="window.location.href='/chat.html';">
+            <span>CONNECT</span>
+        </div>
+    </main>
+
+    <!-- ===== BACKGROUND IMAGE CYCLER WITH FALLBACKS ===== -->
+    <script>
+        (function() {
+            var bg = document.getElementById('nebulaBg');
+
+            var sources = [
+                'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=1920&q=80&auto=format',
+                'https://images.unsplash.com/photo-1462331940025-496dfb828810?w=1920&q=80&auto=format',
+                'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=1920&q=80&auto=format',
+                'https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=1920&q=80&auto=format',
+                'https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=1920&q=80&auto=format'
+            ];
+
+            var idx = 0;
+
+            bg.onerror = function() {
+                idx++;
+                if (idx < sources.length) {
+                    bg.src = sources[idx];
+                }
+            };
+
+            setInterval(function() {
+                var next = (idx + 1) % sources.length;
+                var probe = new Image();
+                probe.onload = function() {
+                    bg.style.transition = 'opacity 1.8s ease-in-out';
+                    bg.style.opacity = '0';
+                    setTimeout(function() {
+                        bg.src = sources[next];
+                        idx = next;
+                        bg.style.opacity = '1';
+                    }, 900);
+                };
+                probe.onerror = function() {
+                    idx = next;
+                };
+                probe.src = sources[next];
+            }, 14000);
+        })();
+    </script>
+
+</body>
+</html>
