@@ -1,15 +1,50 @@
-import Anthropic from '@anthropic-ai/sdk';
-
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'claude-sonnet-4-5';
+const BASE_URL = process.env.AICODEMIRROR_BASE_URL || 'https://api.aicodemirror.com';
 
-// 初始化 Anthropic 客戶端
-const getClient = () => {
+// 构造发往 AICodeMirror 中转网关的请求
+async function callAICodeMirror({ model, max_tokens, temperature, system, messages }) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey || apiKey.includes('在这里')) {
-    throw new Error('ANTHROPIC_API_KEY 未設置');
+    const err = new Error('ANTHROPIC_API_KEY 未設置');
+    err.status = 500;
+    throw err;
   }
-  return new Anthropic({ apiKey });
-};
+
+  const body = { model, max_tokens, temperature, messages };
+  if (system) body.system = system;
+
+  const resp = await fetch(`${BASE_URL}/v1/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify(body)
+  });
+
+  const text = await resp.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    if (!resp.ok) {
+      const err = new Error(`AICodeMirror 返回非 JSON：${text.slice(0, 200)}`);
+      err.status = resp.status;
+      throw err;
+    }
+    throw new Error('无法解析 AICodeMirror 响应');
+  }
+
+  if (!resp.ok) {
+    const err = new Error(data?.error?.message || data?.message || `HTTP ${resp.status}`);
+    err.status = resp.status;
+    err.error = data?.error || { type: data?.type || 'api_error' };
+    throw err;
+  }
+
+  return data;
+}
 
 export default async function handler(req, res) {
   // 只允許 POST 請求
@@ -30,8 +65,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const client = getClient();
-    const resp = await client.messages.create({
+    const resp = await callAICodeMirror({
       model,
       max_tokens,
       temperature,
@@ -71,14 +105,14 @@ export default async function handler(req, res) {
       usage: resp.usage
     });
   } catch (err) {
-    console.error('[Anthropic Error]', err);
+    console.error('[AICodeMirror Error]', err);
     const status = err.status || 500;
     const body = {
       error: err.message || '调用失败',
       type: err.error?.type || err.name,
       status
     };
-    if (status === 401) body.hint = '密钥无效。请检查 Vercel 环境变量中的 ANTHROPIC_API_KEY。';
+    if (status === 401) body.hint = '中转密钥无效。请检查 Vercel 环境变量中的 ANTHROPIC_API_KEY 是否为 AICodeMirror 发放的密钥。';
     if (status === 404) body.hint = '模型名不存在。请检查 DEFAULT_MODEL。';
     if (status === 429) body.hint = '触发限流或额度不足，请稍后重试。';
     res.status(status).json(body);

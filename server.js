@@ -2,19 +2,19 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Anthropic from '@anthropic-ai/sdk';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'claude-sonnet-4-5';
+const BASE_URL = process.env.AICODEMIRROR_BASE_URL || 'https://api.aicodemirror.com';
 
 // 驗證 API Key（只在本地開發時強制退出，Vercel 環境允許延遲驗證）
 if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.includes('在这里')) {
   if (!process.env.VERCEL) {
     console.error('\n❌ 未检测到 ANTHROPIC_API_KEY。请：');
     console.error('   1) 把 .env.example 复制一份并改名为 .env');
-    console.error('   2) 在 .env 里把 ANTHROPIC_API_KEY 填成你真实的 sk-ant-... 密钥');
+    console.error('   2) 在 .env 里把 ANTHROPIC_API_KEY 填成 AICodeMirror 发放的中转密钥');
     console.error('   3) 重新运行 npm start\n');
     process.exit(1);
   } else {
@@ -22,9 +22,50 @@ if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.includes('�
   }
 }
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || 'placeholder'
-});
+// 构造发往 AICodeMirror 中转网关的请求
+async function callAICodeMirror({ model, max_tokens, temperature, system, messages }) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey || apiKey.includes('在这里')) {
+    const err = new Error('ANTHROPIC_API_KEY 未設置');
+    err.status = 500;
+    throw err;
+  }
+
+  const body = { model, max_tokens, temperature, messages };
+  if (system) body.system = system;
+
+  const resp = await fetch(`${BASE_URL}/v1/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify(body)
+  });
+
+  const text = await resp.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    if (!resp.ok) {
+      const err = new Error(`AICodeMirror 返回非 JSON：${text.slice(0, 200)}`);
+      err.status = resp.status;
+      throw err;
+    }
+    throw new Error('无法解析 AICodeMirror 响应');
+  }
+
+  if (!resp.ok) {
+    const err = new Error(data?.error?.message || data?.message || `HTTP ${resp.status}`);
+    err.status = resp.status;
+    err.error = data?.error || { type: data?.type || 'api_error' };
+    throw err;
+  }
+
+  return data;
+}
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -45,7 +86,7 @@ app.post('/api/chat', async (req, res) => {
   }
 
   try {
-    const resp = await client.messages.create({
+    const resp = await callAICodeMirror({
       model,
       max_tokens,
       temperature,
@@ -89,14 +130,14 @@ app.post('/api/chat', async (req, res) => {
       usage: resp.usage
     });
   } catch (err) {
-    console.error('[Anthropic Error]', err);
+    console.error('[AICodeMirror Error]', err);
     const status = err.status || 500;
     const body = {
       error: err.message || '调用失败',
       type: err.error?.type || err.name,
       status
     };
-    if (status === 401) body.hint = '密钥无效。请检查 .env 中的 ANTHROPIC_API_KEY 是否正确（应以 sk-ant- 开头，无多余空格）。';
+    if (status === 401) body.hint = '中转密钥无效。请检查 .env 中的 ANTHROPIC_API_KEY 是否为 AICodeMirror 发放的密钥。';
     if (status === 404) body.hint = '模型名不存在。请检查 DEFAULT_MODEL 或前端传入的 model。';
     if (status === 429) body.hint = '触发限流或额度不足，请稍后重试或检查账户余额。';
     res.status(status).json(body);
@@ -104,7 +145,7 @@ app.post('/api/chat', async (req, res) => {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, model: DEFAULT_MODEL });
+  res.json({ ok: true, model: DEFAULT_MODEL, gateway: BASE_URL });
 });
 
 // 只在非 Vercel 環境下啟動服務器（本地開發時）
@@ -113,7 +154,8 @@ if (!process.env.VERCEL) {
     console.log(`\n✅ Nova 后端已启动`);
     console.log(`   本地访问:  http://localhost:${PORT}/chatbot.html`);
     console.log(`   健康检查:  http://localhost:${PORT}/api/health`);
-    console.log(`   当前模型:  ${DEFAULT_MODEL}\n`);
+    console.log(`   当前模型:  ${DEFAULT_MODEL}`);
+    console.log(`   中转网关:  ${BASE_URL}\n`);
   });
 }
 
