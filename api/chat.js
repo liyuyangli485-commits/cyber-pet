@@ -1,26 +1,28 @@
-const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'claude-sonnet-4-5';
-const BASE_URL = process.env.AICODEMIRROR_BASE_URL || 'https://api.aicodemirror.com/api/claudecode';
+const DEFAULT_MODEL = 'deepseek-chat';
+const BASE_URL = 'https://api.deepseek.com/v1';
 
-// 构造发往 AICodeMirror 中转网关的请求
-async function callAICodeMirror({ model, max_tokens, temperature, system, messages }) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+// 构造发往 DeepSeek 官方 API 的请求（OpenAI 兼容格式）
+async function callDeepSeek({ model, max_tokens, temperature, system, messages }) {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey || apiKey.includes('在这里')) {
-    const err = new Error('ANTHROPIC_API_KEY 未設置');
+    const err = new Error('DEEPSEEK_API_KEY 未設置');
     err.status = 500;
     throw err;
   }
 
+  // DeepSeek 使用 OpenAI 兼容格式
   const body = { model, max_tokens, temperature, messages };
-  if (system) body.system = system;
+  
+  // 如果有 system message，添加到消息列表开头
+  if (system) {
+    body.messages = [{ role: 'system', content: system }, ...messages];
+  }
 
-  const resp = await fetch(`${BASE_URL}/v1/messages`, {
+  const resp = await fetch(`${BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'ANTHROPIC_AUTH_TOKEN': apiKey,
-      'ANTHROPIC_API_KEY': apiKey
+      'Authorization': `Bearer ${apiKey}`
     },
     body: JSON.stringify(body)
   });
@@ -31,11 +33,11 @@ async function callAICodeMirror({ model, max_tokens, temperature, system, messag
     data = JSON.parse(text);
   } catch {
     if (!resp.ok) {
-      const err = new Error(`AICodeMirror 返回非 JSON：${text.slice(0, 200)}`);
+      const err = new Error(`DeepSeek 返回非 JSON：${text.slice(0, 200)}`);
       err.status = resp.status;
       throw err;
     }
-    throw new Error('无法解析 AICodeMirror 响应');
+    throw new Error('无法解析 DeepSeek 响应');
   }
 
   if (!resp.ok) {
@@ -49,7 +51,6 @@ async function callAICodeMirror({ model, max_tokens, temperature, system, messag
 }
 
 export default async function handler(req, res) {
-  // 只允許 POST 請求
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -67,7 +68,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const resp = await callAICodeMirror({
+    const resp = await callDeepSeek({
       model,
       max_tokens,
       temperature,
@@ -75,11 +76,9 @@ export default async function handler(req, res) {
       messages
     });
 
-    let reply = (resp.content || [])
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('\n')
-      .trim();
+    // DeepSeek/OpenAI 格式：choices[0].message.content
+    let reply = resp.choices?.[0]?.message?.content || '';
+    reply = reply.trim();
 
     // 尾部雜音清洗
     const trailingPatterns = [
@@ -89,9 +88,9 @@ export default async function handler(req, res) {
       /(?:如果你?(?:还)?(?:有|有其它|有其他)(?:任何)?(?:问题|疑问)(?:，|,)?(?:请|欢迎|尽管)(?:随时)?(?:告诉|问|联系)(?:我|我们)?)[！!。.]*\s*$/g,
       /(?:如果你?(?:还)?(?:有|有其它|有其他)(?:任何)?(?:需要|需求)(?:，|,)?(?:请|欢迎|尽管)(?:随时)?(?:告诉|联系)(?:我|我们)?)[！!。.]*\s*$/g,
       /(?:Is there anything else (?:I can )?(?:help (?:you )?with|assist (?:you )?with)\?*\s*)$/gi,
-      /(?:Hope this helps[!!.]*\s*)$/gi,
-      /(?:Let me know if (?:you )?(?:have|need) (?:any )?(?:questions?|help|assistance)[!!.]*\s*)$/gi,
-      /(?:Feel free (?:to )?(?:ask|reach out|contact)[!!.]*\s*)$/gi,
+      /(?:Hope this helps[!.]*\s*)$/gi,
+      /(?:Let me know if (?:you )?(?:have|need) (?:any )?(?:questions?|help|assistance)[!.]*\s*)$/gi,
+      /(?:Feel free (?:to )?(?:ask|reach out|contact)[!.]*\s*)$/gi,
       /([。！？.!?])\1{2,}$/g,
       /\n{3,}$/g,
     ];
@@ -103,19 +102,19 @@ export default async function handler(req, res) {
     res.status(200).json({
       reply,
       model: resp.model,
-      stop_reason: resp.stop_reason,
+      stop_reason: resp.choices?.[0]?.finish_reason,
       usage: resp.usage
     });
   } catch (err) {
-    console.error('[AICodeMirror Error]', err);
+    console.error('[DeepSeek Error]', err);
     const status = err.status || 500;
     const body = {
       error: err.message || '调用失败',
       type: err.error?.type || err.name,
       status
     };
-    if (status === 401) body.hint = '中转密钥无效。请检查 Vercel 环境变量中的 ANTHROPIC_API_KEY 是否为 AICodeMirror 发放的密钥。';
-    if (status === 404) body.hint = '模型名不存在。请检查 DEFAULT_MODEL。';
+    if (status === 401) body.hint = 'API Key 无效。请检查 Vercel 环境变量中的 DEEPSEEK_API_KEY。';
+    if (status === 404) body.hint = '模型不存在。请检查 DEFAULT_MODEL。';
     if (status === 429) body.hint = '触发限流或额度不足，请稍后重试。';
     res.status(status).json(body);
   }
