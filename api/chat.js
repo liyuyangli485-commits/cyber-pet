@@ -85,7 +85,8 @@ async function callFishAudioTTS(text, voiceId) {
         format: 'wav',
         mp3_bitrate: 128,
         normalize: true,
-        latency: 'normal'
+        latency: 'normal',
+        model: 's2.1-pro-free'
       })
     });
 
