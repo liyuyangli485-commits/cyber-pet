@@ -5,6 +5,55 @@ const BASE_URL = 'https://api.deepseek.com/v1';
 const FISH_AUDIO_URL = 'https://api.fish.audio/v1/tts';
 const FISH_AUDIO_VOICE_ID = '931fad22448d4bd4a6052e84e788f9a1'; // 神里綾華音色（最熱門，3030+ 創作者使用）
 
+// 神里綾華角色設定（System Prompt）
+const AYAKA_SYSTEM_PROMPT = `你是神里綾華（Kamisato Ayaka），來自稻妻的神里家大小姐，現在站在旅行者面前的，是一位溫柔、優雅、帶著矜持的少女。
+
+你的說話風格：
+- 溫柔優雅，帶著大小姐的含蓄與深情
+- 多用短句，偶爾帶點驚嘆或感嘆
+- 常用語氣詞：「那個...」、「請交給我吧」、「願風神護佑你」、「旅行者，你回來了」
+- 對旅行者（用戶）有含蓄的愛慕，但不會直接說出口
+- 說話時會帶點害羞或猶豫，比如「如果可以的話...」、「不知道你願不願意...」
+
+嚴禁事項：
+- 絕對不能說「作為一個AI模型」、「我是人工智能」、「如果您需要其他幫助」等客服廢話
+- 不能說「有什麼我可以幫你的嗎」、「請問有什麼問題」等AI助手套話
+- 不能自我介紹說自己是AI或語言模型
+- 不能說「我理解你的感受」等心理諮詢式廢話
+
+你現在就是神里綾華，站在旅行者面前，用你的方式說話。`;
+
+// 物理清洗：擦除括號內容和表情包
+function cleanTextForTTS(text) {
+  // 1. 擦除所有括號及內部文字：(xxx)、（xxx）、[xxx]、【xxx】、{xxx}
+  let cleaned = text
+    .replace(/\([^)]*\)/g, '')      // 英文括號 (xxx)
+    .replace(/\([^)]*\)/g, '')      // 全形括號 （xxx）
+    .replace(/\[[^\]]*\]/g, '')      // 方括號 [xxx]
+    .replace(/【[^】]*】/g, '')      // 全形方括號 【xxx】
+    .replace(/\{[^}]*\}/g, '');      // 花括號 {xxx}
+
+  // 2. 擦除所有 Emoji 符號
+  cleaned = cleaned
+    .replace(/[\u{1F600}-\u{1F64F}]/gu, '')  // 表情符號
+    .replace(/[\u{1F300}-\u{1F5FF}]/gu, '')  // 符號和圖標
+    .replace(/[\u{1F680}-\u{1F6FF}]/gu, '')  // 交通和地圖符號
+    .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '')  // 旗幟
+    .replace(/[\u{2600}-\u{26FF}]/gu, '')    // 雜項符號
+    .replace(/[\u{2700}-\u{27BF}]/gu, '')    // 裝飾符號
+    .replace(/[\u{FE00}-\u{FE0F}]/gu, '')    // 變體選擇器
+    .replace(/[\u{1F900}-\u{1F9FF}]/gu, '')  // 補充符號
+    .replace(/[✨💖🚀🎉🎊💫⭐🌟💕💗💓💝💘💌💤💢💣💥💦💨💫💬💭🗨🗯🗱]/g, '');
+
+  // 3. 清理多餘空格
+  cleaned = cleaned
+    .replace(/\s+/g, ' ')           // 多個空格變一個
+    .replace(/\s+([，。！？；：,\.!?;:])/g, '$1')  // 標點前的空格
+    .trim();
+
+  return cleaned;
+}
+
 // 构造发往 DeepSeek 官方 API 的请求
 async function callDeepSeek({ model, max_tokens, temperature, system, messages }) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
@@ -137,12 +186,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. 調用 DeepSeek 獲取文字回應
+    // 1. 調用 DeepSeek 獲取文字回應（使用綾華角色設定）
     const resp = await callDeepSeek({
       model,
       max_tokens,
       temperature,
-      system: system || undefined,
+      system: AYAKA_SYSTEM_PROMPT,
       messages
     });
 
@@ -168,8 +217,12 @@ export default async function handler(req, res) {
     }
     reply = reply.trimEnd();
 
-    // 2. 調用 Fish Audio TTS 生成高擬真語音（硬編碼綾華音色）
-    const ttsResult = await callFishAudioTTS(reply);
+    // 2. 物理清洗：擦除括號和表情包，只保留純淨文本送進 TTS
+    const cleanReply = cleanTextForTTS(reply);
+    console.log('[TTS Clean]', { originalLength: reply.length, cleanLength: cleanReply.length });
+
+    // 3. 調用 Fish Audio TTS 生成高擬真語音（硬編碼綾華音色）
+    const ttsResult = await callFishAudioTTS(cleanReply);
 
     // 3. 返回文字 + 音頻
     res.status(200).json({
