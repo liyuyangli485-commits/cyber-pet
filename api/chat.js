@@ -63,25 +63,27 @@ async function callDeepSeek({ model, max_tokens, temperature, system, messages }
 }
 
 // Fish Audio TTS 语音合成（高擬真質量）
-async function callFishAudioTTS(text, voiceId = FISH_AUDIO_VOICE_ID) {
+async function callFishAudioTTS(text) {
   try {
-    const apiKey = process.env.FISH_AUDIO_API_KEY;
-    if (!apiKey) {
-      console.error('[Fish Audio] FISH_AUDIO_API_KEY 未設置');
-      return null;
-    }
+    // 硬編碼 Fish Audio API Key 和神里綾華音色 ID
+    const FISH_AUDIO_API_KEY = '3c5352b30bab411ab7882991f102a8fb';
+    const AYAKA_VOICE_ID = '931fad22448d4bd4a6052e84e788f9a1';
 
-    console.log('[Fish Audio] 開始 TTS 合成', { textLength: text.length, voiceId });
+    console.log('[Fish Audio] 開始 TTS 合成', {
+      textLength: text.length,
+      voiceId: AYAKA_VOICE_ID,
+      apiKey: FISH_AUDIO_API_KEY.substring(0, 8) + '...'
+    });
 
     const resp = await fetch(FISH_AUDIO_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        'Authorization': `Bearer ${FISH_AUDIO_API_KEY}`
       },
       body: JSON.stringify({
         text: text,
-        voice_id: voiceId,
+        voice_id: AYAKA_VOICE_ID,
         model: 's2.1-pro',
         format: 'mp3'
       })
@@ -90,6 +92,7 @@ async function callFishAudioTTS(text, voiceId = FISH_AUDIO_VOICE_ID) {
     if (!resp.ok) {
       const errText = await resp.text();
       console.error('[Fish Audio] TTS 失敗:', resp.status, errText);
+      // 不降級，直接返回 null
       return null;
     }
 
@@ -97,13 +100,18 @@ async function callFishAudioTTS(text, voiceId = FISH_AUDIO_VOICE_ID) {
     const audioBuffer = await resp.arrayBuffer();
     const base64 = Buffer.from(audioBuffer).toString('base64');
 
-    console.log('[Fish Audio] TTS 成功', { audioSize: base64.length });
+    console.log('[Fish Audio] TTS 成功', {
+      audioSize: base64.length,
+      format: 'audio/mpeg'
+    });
+
     return {
       audio: base64,
       audioFormat: 'audio/mpeg'
     };
   } catch (err) {
     console.error('[Fish Audio] TTS 異常:', err);
+    // 不降級，直接返回 null
     return null;
   }
 }
@@ -160,8 +168,8 @@ export default async function handler(req, res) {
     }
     reply = reply.trimEnd();
 
-    // 2. 調用 Fish Audio TTS 生成高擬真語音
-    const ttsResult = await callFishAudioTTS(reply, FISH_AUDIO_VOICE_ID);
+    // 2. 調用 Fish Audio TTS 生成高擬真語音（硬編碼綾華音色）
+    const ttsResult = await callFishAudioTTS(reply);
 
     // 3. 返回文字 + 音頻
     res.status(200).json({
