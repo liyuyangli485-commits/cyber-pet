@@ -3,7 +3,7 @@ const BASE_URL = 'https://api.deepseek.com/v1';
 
 // Fish Audio TTS（高擬真語音合成）
 const FISH_AUDIO_URL = 'https://api.fish.audio/v1/tts';
-const FISH_AUDIO_VOICE_ID = '6f841c68-5a86-4e28-9c1c-7e88b8e3b8d8'; // 神里綾華音色
+const FISH_AUDIO_VOICE_ID = '931fad22448d4bd4a6052e84e788f9a1'; // 神里綾華音色（最熱門，3030+ 創作者使用）
 
 // 构造发往 DeepSeek 官方 API 的请求
 async function callDeepSeek({ model, max_tokens, temperature, system, messages }) {
