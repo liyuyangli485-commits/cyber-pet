@@ -1,8 +1,9 @@
 const DEFAULT_MODEL = 'deepseek-chat';
 const BASE_URL = 'https://api.deepseek.com/v1';
 
-// Google Translate TTS（完全免費，無需 API Key）
-const GOOGLE_TTS_URL = 'https://translate.google.com/translate_tts';
+// Fish Audio TTS（高擬真語音合成）
+const FISH_AUDIO_URL = 'https://api.fish.audio/v1/tts';
+const FISH_AUDIO_VOICE_ID = '6f841c68-5a86-4e28-9c1c-7e88b8e3b8d8'; // 神里綾華音色
 
 // 构造发往 DeepSeek 官方 API 的请求
 async function callDeepSeek({ model, max_tokens, temperature, system, messages }) {
@@ -61,22 +62,34 @@ async function callDeepSeek({ model, max_tokens, temperature, system, messages }
   return data;
 }
 
-// Google Translate TTS 语音合成（完全免费，无需 API Key）
-async function callGoogleTTS(text, lang = 'zh-CN') {
+// Fish Audio TTS 语音合成（高擬真質量）
+async function callFishAudioTTS(text, voiceId = FISH_AUDIO_VOICE_ID) {
   try {
-    console.log('[Google TTS] 開始 TTS 合成', { textLength: text.length, lang });
+    const apiKey = process.env.FISH_AUDIO_API_KEY;
+    if (!apiKey) {
+      console.error('[Fish Audio] FISH_AUDIO_API_KEY 未設置');
+      return null;
+    }
 
-    // Google Translate TTS API
-    const url = `${GOOGLE_TTS_URL}?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`;
-    
-    const resp = await fetch(url, {
+    console.log('[Fish Audio] 開始 TTS 合成', { textLength: text.length, voiceId });
+
+    const resp = await fetch(FISH_AUDIO_URL, {
+      method: 'POST',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        text: text,
+        voice_id: voiceId,
+        model: 's2.1-pro',
+        format: 'mp3'
+      })
     });
 
     if (!resp.ok) {
-      console.error('[Google TTS] TTS 失敗:', resp.status);
+      const errText = await resp.text();
+      console.error('[Fish Audio] TTS 失敗:', resp.status, errText);
       return null;
     }
 
@@ -84,13 +97,13 @@ async function callGoogleTTS(text, lang = 'zh-CN') {
     const audioBuffer = await resp.arrayBuffer();
     const base64 = Buffer.from(audioBuffer).toString('base64');
 
-    console.log('[Google TTS] TTS 成功', { audioSize: base64.length });
+    console.log('[Fish Audio] TTS 成功', { audioSize: base64.length });
     return {
       audio: base64,
       audioFormat: 'audio/mpeg'
     };
   } catch (err) {
-    console.error('[Google TTS] TTS 異常:', err);
+    console.error('[Fish Audio] TTS 異常:', err);
     return null;
   }
 }
@@ -147,8 +160,8 @@ export default async function handler(req, res) {
     }
     reply = reply.trimEnd();
 
-    // 2. 調用 Google TTS 生成語音（完全免費）
-    const ttsResult = await callGoogleTTS(reply, 'zh-CN');
+    // 2. 調用 Fish Audio TTS 生成高擬真語音
+    const ttsResult = await callFishAudioTTS(reply, FISH_AUDIO_VOICE_ID);
 
     // 3. 返回文字 + 音頻
     res.status(200).json({
