@@ -177,7 +177,7 @@
 
         // 嘴在画布上的相对位置（相对 avatar 图的比例，精准对齐白发角色面部嘴部位置）
         const MOUTH_RX = 0.50;   // 水平中心
-        const MOUTH_RY = 0.60;   // 垂直位置（0=头顶 1=脚底）
+        const MOUTH_RY = 0.235;  // 垂直位置（0=头顶 1=脚底）：Q版全身图200x200含上下padding，嘴在图高33%处 → 0.33×(350/500)
         const MOUTH_W  = 28;     // 嘴宽（px，CSS 像素）
 
         // 物理像素对齐：canvas 内部缓冲区 = CSS 尺寸 × devicePixelRatio，否则高分屏发虚
