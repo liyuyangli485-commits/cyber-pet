@@ -4,6 +4,7 @@
     { "src": "api/*.js", "use": "@vercel/node" },
     { "src": "*.html", "use": "@vercel/static" },
     { "src": "avatar.png", "use": "@vercel/static" },
+    { "src": "avatar_model.glb", "use": "@vercel/static" },
     { "src": "public/**", "use": "@vercel/static" },
     { "src": "genaisennao_2/**", "use": "@vercel/static" }
   ],

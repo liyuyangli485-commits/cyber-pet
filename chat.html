@@ -53,29 +53,18 @@
             margin: 0 0 20px 0;
         }
 
-        /* ===== 虚拟形象容器：静态底图 + 口型形变画布 ===== */
-        #avatar-wrapper {
-            position: relative;
+        /* ===== 3D 虚拟形象容器：WebGL 渲染画布 ===== */
+        #avatar-3d {
             width: 350px;
             height: 500px;
             margin-bottom: 20px;
             z-index: 1;
         }
-        #base-avatar {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            pointer-events: none;
+        #avatar-3d canvas {
             display: block;
-        }
-        #mouth-canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
             width: 100%;
             height: 100%;
             pointer-events: none;
-            z-index: 2;
         }
 
         /* ===== 聊天区：毛玻璃面板 ===== */
@@ -157,99 +146,109 @@
     <!-- 主标题 -->
     <h1 id="main-title">欢迎回家主人</h1>
 
-    <!-- 虚拟形象：静态底图 + 口型形变画布（覆盖其上） -->
-    <div id="avatar-wrapper">
-        <img id="base-avatar" src="/avatar.png?v=2026_final" alt="avatar">
-        <canvas id="mouth-canvas"></canvas>
-    </div>
+    <!-- Three.js 核心 + GLTFLoader（ESM importmap 方案） -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+    }
+    </script>
 
-    <script>
-    // ==================== MouthShape Canvas 绘制实现 ====================
-    // 在 #mouth-canvas 上画一条随振幅张合的嘴部弧线，实现音频→口型的视觉闭环。
+    <!-- 3D 虚拟形象：WebGL 渲染画布（Three.js） -->
+    <div id="avatar-3d"></div>
+
+    <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    // ==================== Three.js 3D 渲染引擎 ====================
+    // WebGLRenderer + Scene + PerspectiveCamera + 基础光照 + GLTFLoader。
+    // 模型资产路径：/avatar_model.glb（根目录静态文件）。
+    // 文件缺失时降级为控制台警告，聊天/语音/口型接口均不受影响。
     (function () {
-        const canvas = document.getElementById('mouth-canvas');
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+        var container = document.getElementById('avatar-3d');
+        if (!container) return;
 
-        let value = 0;           // 当前嘴开合值 0=闭 1=全开
-        let W = 0, H = 0;        // CSS 逻辑尺寸（随容器）
+        var W = container.clientWidth  || 350;
+        var H = container.clientHeight || 500;
+        var DPR = window.devicePixelRatio || 1;
 
-        // 嘴在画布上的相对位置（相对 avatar 图的比例，精准对齐白发角色面部嘴部位置）
-        const MOUTH_RX = 0.50;   // 水平中心
-        const MOUTH_RY = 0.235;  // 垂直位置（0=头顶 1=脚底）：Q版全身图200x200含上下padding，嘴在图高33%处 → 0.33×(350/500)
-        const MOUTH_W  = 28;     // 嘴宽（px，CSS 像素）
+        // --- 场景 ---
+        var scene = new THREE.Scene();
 
-        // 物理像素对齐：canvas 内部缓冲区 = CSS 尺寸 × devicePixelRatio，否则高分屏发虚
-        function resize() {
-            const rect = canvas.parentElement.getBoundingClientRect();
-            const dpr = window.devicePixelRatio || 1;
-            W = rect.width;  H = rect.height;
-            canvas.width  = Math.round(W * dpr);
-            canvas.height = Math.round(H * dpr);
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);   // 后续绘图直接用 CSS 坐标
-            draw();
-        }
+        // --- 透视相机 ---
+        var camera = new THREE.PerspectiveCamera(40, W / H, 0.1, 100);
+        camera.position.set(0, 0, 3);
 
-        function draw() {
-            ctx.clearRect(0, 0, W, H);
+        // --- WebGL 渲染器 ---
+        var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setPixelRatio(DPR);
+        renderer.setSize(W, H);
+        renderer.setClearColor(0x000000, 0);   // 透明背景
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        container.appendChild(renderer.domElement);
 
-            const cx = W * MOUTH_RX;
-            const cy = H * MOUTH_RY;
-            const halfW = MOUTH_W / 2;
-            // 开口高度随 value 线性增长：闭嘴 0px → 全开 14px
-            const openH = value * 14;
+        // --- 基础光照 ---
+        var ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+        scene.add(ambientLight);
 
-            ctx.lineWidth = 2;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
+        var dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        dirLight.position.set(2, 4, 3);
+        scene.add(dirLight);
 
-            // 底色填充：张嘴时画一个深色口腔，避免上下唇之间透底图
-            if (openH > 1.5) {
-                ctx.fillStyle = 'rgba(60, 20, 30, 0.55)';
-                ctx.beginPath();
-                ctx.moveTo(cx - halfW, cy);
-                ctx.bezierCurveTo(cx - halfW, cy - openH, cx + halfW, cy - openH, cx + halfW, cy);
-                ctx.bezierCurveTo(cx + halfW, cy + openH, cx - halfW, cy + openH, cx - halfW, cy);
-                ctx.closePath();
-                ctx.fill();
-            }
-
-            // 嘴部轮廓线：黑色弧线
-            ctx.strokeStyle = '#2a1520';
-            ctx.beginPath();
-            if (openH < 1) {
-                // 闭嘴：一条水平弧线（微微上翘）
-                ctx.moveTo(cx - halfW, cy);
-                ctx.quadraticCurveTo(cx, cy - 3, cx + halfW, cy);
-            } else {
-                // 张嘴：上唇弧 + 下唇弧，形成开口椭圆轮廓
-                ctx.moveTo(cx - halfW, cy);
-                ctx.bezierCurveTo(cx - halfW, cy - openH, cx + halfW, cy - openH, cx + halfW, cy);
-                ctx.moveTo(cx + halfW, cy);
-                ctx.bezierCurveTo(cx + halfW, cy + openH, cx - halfW, cy + openH, cx - halfW, cy);
-            }
-            ctx.stroke();
-        }
-
-        // 公开 setter：被音频振幅口型 / 合成口型逐帧调用
+        // --- 口型接口：后续对接模型 morph targets / blend shapes ---
+        // 当前作为数据通道保留，音频振幅链持续写入此值。
+        var currentMouthValue = 0;
         window.MouthShape = {
-            set(v) {
-                value = Math.max(0, Math.min(1, v || 0));
-                draw();
-            }
+            set: function (v) { currentMouthValue = Math.max(0, Math.min(1, v || 0)); }
         };
 
-        // 窗口 / 容器尺寸变化时重算 canvas 物理像素
-        window.addEventListener('resize', resize);
-        // 头像图片加载完再画一帧（确保 wrapper 尺寸已稳定）
-        var img = document.getElementById('base-avatar');
-        if (img) {
-            if (img.complete) resize();
-            else img.addEventListener('load', resize);
-        } else {
-            resize();
+        // --- 模型加载 ---
+        var modelGroup = null;
+        var loader = new THREE.GLTFLoader();
+
+        loader.load('/avatar_model.glb', function (gltf) {
+            modelGroup = gltf.scene;
+            scene.add(modelGroup);
+
+            // 自适应缩放 + 居中
+            var box = new THREE.Box3().setFromObject(modelGroup);
+            var size = box.getSize(new THREE.Vector3());
+            var maxDim = Math.max(size.x, size.y, size.z);
+            var scale = 2.0 / maxDim;   // 让模型在相机视野内约占 2 个单位
+            modelGroup.scale.setScalar(scale);
+
+            // 重新居中
+            box = new THREE.Box3().setFromObject(modelGroup);
+            var center = box.getCenter(new THREE.Vector3());
+            modelGroup.position.sub(center);
+            modelGroup.position.y -= (box.max.y - box.min.y) * 0.1;   // 整体略下沉
+
+            console.log(' 3D 模型加载成功，vertices:', gltf.scene.children.length);
+        }, undefined, function (err) {
+            console.warn('⚠️ avatar_model.glb 未找到或加载失败 — 3D 角色暂不显形，聊天与语音正常。', err && err.message);
+        });
+
+        // --- 渲染循环 ---
+        function animate() {
+            requestAnimationFrame(animate);
+            // 后续：将 currentMouthValue 写入模型 morph targets
+            renderer.render(scene, camera);
         }
+        animate();
+
+        // --- 窗口自适应 ---
+        window.addEventListener('resize', function () {
+            var w = container.clientWidth;
+            var h = container.clientHeight;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        });
     })();
     </script>
 
@@ -351,9 +350,8 @@
         }
 
         // ==================== 口型形变驱动接口 ====================
-        // 真正的 set() 实现由 avatar-wrapper 后的内联 <script> 初始化：
-        // 在 #mouth-canvas 上画随振幅张合的黑色弧线。
-        // 保留兜底：若 canvas 脚本未执行（极端情况），音频链调用不会报错。
+        // 真正的 set() 由 3D 引擎初始化脚本写入（后续对接模型 morph targets）。
+        // 保留兜底：若 Three.js 脚本未执行（极端情况），音频链调用不会报错。
         window.MouthShape = window.MouthShape || { set() {} };
 
         // ==================== 主路径：后端音频（WAV/MP3 动态对齐）+ Web Audio 振幅口型 ====================
