@@ -163,6 +163,97 @@
         <canvas id="mouth-canvas"></canvas>
     </div>
 
+    <script>
+    // ==================== MouthShape Canvas 绘制实现 ====================
+    // 在 #mouth-canvas 上画一条随振幅张合的嘴部弧线，实现音频→口型的视觉闭环。
+    (function () {
+        const canvas = document.getElementById('mouth-canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        let value = 0;           // 当前嘴开合值 0=闭 1=全开
+        let W = 0, H = 0;        // CSS 逻辑尺寸（随容器）
+
+        // 嘴在画布上的相对位置（相对 avatar 图的比例，按角色面部调整这两个值）
+        const MOUTH_RX = 0.50;   // 水平中心
+        const MOUTH_RY = 0.68;   // 垂直位置（0=头顶 1=脚底）
+        const MOUTH_W  = 28;     // 嘴宽（px，CSS 像素）
+
+        // 物理像素对齐：canvas 内部缓冲区 = CSS 尺寸 × devicePixelRatio，否则高分屏发虚
+        function resize() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            W = rect.width;  H = rect.height;
+            canvas.width  = Math.round(W * dpr);
+            canvas.height = Math.round(H * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);   // 后续绘图直接用 CSS 坐标
+            draw();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+
+            const cx = W * MOUTH_RX;
+            const cy = H * MOUTH_RY;
+            const halfW = MOUTH_W / 2;
+            // 开口高度随 value 线性增长：闭嘴 0px → 全开 14px
+            const openH = value * 14;
+
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            // 底色填充：张嘴时画一个深色口腔，避免上下唇之间透底图
+            if (openH > 1.5) {
+                ctx.fillStyle = 'rgba(60, 20, 30, 0.55)';
+                ctx.beginPath();
+                // 椭圆近似：用两段三次贝塞尔拼一个扁圆
+                ctx.moveTo(cx - halfW, cy);
+                ctx.bezierCurveTo(cx - halfW, cy - openH, cx + halfW, cy - openH, cx + halfW, cy);
+                ctx.bezierCurveTo(cx + halfW, cy + openH, cx - halfW, cy + openH, cx - halfW, cy);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // 嘴部轮廓线：黑色弧线
+            ctx.strokeStyle = '#2a1520';
+            ctx.beginPath();
+            if (openH < 1) {
+                // 闭嘴：一条水平弧线（微微上翘）
+                ctx.moveTo(cx - halfW, cy);
+                ctx.quadraticCurveTo(cx, cy - 3, cx + halfW, cy);
+            } else {
+                // 张嘴：上唇弧 + 下唇弧，形成开口椭圆轮廓
+                ctx.moveTo(cx - halfW, cy);
+                ctx.bezierCurveTo(cx - halfW, cy - openH, cx + halfW, cy - openH, cx + halfW, cy);
+                ctx.moveTo(cx + halfW, cy);
+                ctx.bezierCurveTo(cx + halfW, cy + openH, cx - halfW, cy + openH, cx - halfW, cy);
+            }
+            ctx.stroke();
+        }
+
+        // 公开 setter：被音频振幅口型 / 合成口型逐帧调用
+        window.MouthShape = {
+            set(v) {
+                value = Math.max(0, Math.min(1, v || 0));
+                draw();
+            }
+        };
+
+        // 窗口 / 容器尺寸变化时重算 canvas 物理像素
+        window.addEventListener('resize', resize);
+        // 头像图片加载完再画一帧（确保 wrapper 尺寸已稳定）
+        var img = document.getElementById('base-avatar');
+        if (img) {
+            if (img.complete) resize();
+            else img.addEventListener('load', resize);
+        } else {
+            resize();
+        }
+    })();
+    </script>
+
     <div id="chat-container">
         <div class="msg-her welcome">……（挑眉）哼，你终于舍得连接我了？今天只有 30 次机会，没事别来烦我。</div>
     </div>
@@ -261,8 +352,9 @@
         }
 
         // ==================== 口型形变驱动接口 ====================
-        // 后续由 mouth-canvas 形变逻辑覆盖 window.MouthShape.set。
-        // 这里先放空壳，保证音频链 / speechSynthesis 兜底逻辑不会报错。
+        // 真正的 set() 实现由 avatar-wrapper 后的内联 <script> 初始化：
+        // 在 #mouth-canvas 上画随振幅张合的黑色弧线。
+        // 保留兜底：若 canvas 脚本未执行（极端情况），音频链调用不会报错。
         window.MouthShape = window.MouthShape || { set() {} };
 
         // ==================== 主路径：后端音频（WAV/MP3 动态对齐）+ Web Audio 振幅口型 ====================
